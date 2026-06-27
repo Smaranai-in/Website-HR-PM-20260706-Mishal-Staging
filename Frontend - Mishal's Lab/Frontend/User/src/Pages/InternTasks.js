@@ -424,9 +424,10 @@ export default function InternTasks() {
                                                             </div>
                                                         </div>
                                                         {t.description && (
-                                                            <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed line-clamp-2 max-w-2xl">
-                                                                {t.description}
-                                                            </p>
+                                                            <div 
+                                                                className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed line-clamp-2 max-w-2xl prose prose-sm dark:prose-invert"
+                                                                dangerouslySetInnerHTML={{ __html: t.description }}
+                                                            />
                                                         )}
                                                     </div>
                                                     

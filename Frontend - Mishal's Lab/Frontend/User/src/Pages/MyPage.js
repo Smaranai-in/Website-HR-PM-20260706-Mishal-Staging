@@ -296,9 +296,10 @@ export default function MyPage() {
                                             {studentAssessment.assessment_outlines.title}
                                         </h3>
                                         <div className="mt-4 p-4 bg-slate-50 dark:bg-[#0a192f] rounded-xl border-l-4 border-emerald-500">
-                                            <p className="text-slate-600 dark:text-slate-300 leading-relaxed italic text-sm whitespace-pre-wrap">
-                                                "{studentAssessment.assessment_outlines.description}"
-                                            </p>
+                                            <div 
+                                                className="text-slate-600 dark:text-slate-300 leading-relaxed italic text-sm whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
+                                                dangerouslySetInnerHTML={{ __html: studentAssessment.assessment_outlines.description }}
+                                            />
                                         </div>
                                     </div>
 
