@@ -17,6 +17,7 @@ import AdminCourseEnrollments from "./Admin/AdminCourseEnrollments";
 import ResearchApplicantsList from "./Admin/ResearchApplicantsList";
 import AcademicProjectsList from "./Admin/AcademicProjectsList";
 import AIInterviewsList from "./Admin/AIInterviewsList";
+import LeaveManagement from "./Admin/LeaveManagement";
 import Profile from "./components/Profile";
 import SupportChat from "./Admin/SupportChat";
 
@@ -141,6 +142,7 @@ function AppContent() {
         <Route path="/support-chat" element={<ProtectedRoute><SupportChat /></ProtectedRoute>} />
         <Route path="/reset-password" element={<ForgotOtpVerify />} />
         <Route path="/user-management" element={<ProtectedRoute><UserManagement /></ProtectedRoute>} />
+        <Route path="/admin-leaves" element={<ProtectedRoute><LeaveManagement /></ProtectedRoute>} />
         <Route path="/projects" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/projects/new" element={<ProtectedRoute><NewProjectPage /></ProtectedRoute>} />
         <Route path="/projects/developers" element={<ProtectedRoute><DevelopersListPage /></ProtectedRoute>} />

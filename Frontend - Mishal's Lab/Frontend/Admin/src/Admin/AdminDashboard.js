@@ -8,6 +8,7 @@ import {
   Briefcase,
   MonitorPlay,
   ShieldAlert,
+  Calendar,
 } from "lucide-react";
 import { useAuthModal } from "../context/AuthModalContext";
 import { useNavigate } from "react-router-dom";
@@ -143,6 +144,14 @@ const {
       glow: "bg-teal-300 dark:bg-teal-900",
       gradient: "from-teal-500 to-cyan-500",
       navigate: "/user-management",
+    },
+    {
+      title: "Leave Management",
+      desc: "View, approve, or reject intern leave applications.",
+      icon: <Calendar size={32} className="text-white" />,
+      glow: "bg-amber-300 dark:bg-amber-900",
+      gradient: "from-amber-500 to-orange-500",
+      navigate: "/admin-leaves",
     },
   ];
 

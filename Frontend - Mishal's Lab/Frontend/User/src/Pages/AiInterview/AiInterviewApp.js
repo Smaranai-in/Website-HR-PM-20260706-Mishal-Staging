@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthModal } from '../../context/AuthModalContext';
 import ResumeUpload from './components/ResumeUpload';
 import Interview from './components/Interview';
@@ -7,6 +8,7 @@ import { supabase } from '../../supabaseClient';
 import { toast } from 'react-toastify';
 
 export default function AiInterviewApp() {
+    const navigate = useNavigate();
     const { profile, loginbool, setActivePage } = useAuthModal();
     const [currentView, setCurrentView] = useState('upload');
     const [interviewData, setInterviewData] = useState(null);
