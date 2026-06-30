@@ -188,7 +188,7 @@ export default function InternPortal() {
             <div className="bg-white dark:bg-[#0a192f] border-b border-slate-200 dark:border-slate-800 px-4 py-4">
                 <div className="max-w-6xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => navigate("/intern-activity")}
+                        <button onClick={() => navigate("/mypage")}
                             className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                             <ChevronLeft className="w-5 h-5 text-slate-500" />
                         </button>
@@ -470,7 +470,7 @@ export default function InternPortal() {
                     {[
                         { label: "My Tasks", icon: Briefcase, path: "/intern-tasks", color: "text-blue-600 bg-blue-50 dark:bg-blue-900/20" },
                         { label: "Daily Report", icon: FileText, path: "/intern-report", color: "text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20" },
-                        { label: "Activity", icon: Activity, path: "/intern-activity", color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20" },
+                        { label: "Leave Request", icon: Calendar, path: "/mypage?tab=leaves", color: "text-amber-600 bg-amber-50 dark:bg-amber-900/20" },
                         { label: "My Page", icon: User, path: "/mypage", color: "text-slate-600 bg-slate-100 dark:bg-slate-800" },
                         { label: "Assessment", icon: BookOpen, path: internData ? `/assessment/${internData.id}` : "/mypage", color: "text-purple-600 bg-purple-50 dark:bg-purple-900/20" },
                         { label: "Interview", icon: Shield, path: "/ai-interview", color: "text-orange-600 bg-orange-50 dark:bg-orange-900/20" },

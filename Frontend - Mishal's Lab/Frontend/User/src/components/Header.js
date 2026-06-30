@@ -17,10 +17,8 @@ const Header = () => {
     { name: "Services", type: "scroll", targetId: "services" },
     { name: "Courses", type: "page", path: "/courses" },
     { name: "About", type: "page", path: "/about" },
-    { name: "My Page", type: "page", path: "/mypage" },
+    { name: "My Page", type: "page", path: "/mypage", requiresAuth: true },
     { name: "Contact", type: "scroll", targetId: "contact" },
-    { name: "Internship", type: "page", path: "/internapplication" },
-    { name: "Intern Activity", type: "page", path: "/intern-activity", requiresAuth: true },
   ];
 
   // 🌗 Load theme

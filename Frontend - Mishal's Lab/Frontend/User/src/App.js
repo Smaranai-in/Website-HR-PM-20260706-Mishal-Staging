@@ -71,10 +71,10 @@ function AppContent() {
         <Route path="/Profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/reset-password" element={<ForgotOtpVerify />} />
         <Route path="/ai-interview" element={<ProtectedRoute><AiInterviewApp /></ProtectedRoute>} />
+        <Route path="/intern-activity" element={<Navigate to="/mypage?tab=overview" replace />} />
         <Route path="/mypage" element={<ProtectedRoute><MyPage /></ProtectedRoute>} />
         <Route path="/assessment/:internshipId" element={<ProtectedRoute><AssessmentOutlines /></ProtectedRoute>} />
         <Route path="/assessment-confirmation" element={<ProtectedRoute><AssessmentConfirmation /></ProtectedRoute>} />
-        <Route path="/intern-activity" element={<ProtectedRoute><InternActivity /></ProtectedRoute>} />
         <Route path="/intern-portal" element={<ProtectedRoute><InternPortal /></ProtectedRoute>} />
         <Route path="/intern-tasks" element={<ProtectedRoute><InternTasks /></ProtectedRoute>} />
         <Route path="/intern-report" element={<ProtectedRoute><InternDailyReport /></ProtectedRoute>} />
