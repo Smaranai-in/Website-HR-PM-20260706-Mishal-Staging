@@ -205,7 +205,7 @@ function StatusSelect({ current, onChange }) {
                 onChange={e => onChange(e.target.value)}
             >
                 {statusOptions.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                    <option key={o.value} value={o.value} className="bg-white text-slate-800 dark:bg-slate-800 dark:text-slate-100">{o.label}</option>
                 ))}
             </select>
             <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-current opacity-60" />

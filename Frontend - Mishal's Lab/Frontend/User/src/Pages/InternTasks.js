@@ -30,10 +30,18 @@ export default function InternTasks() {
             if (!uid) return;
             setLoading(true);
             try {
+                // Get application IDs in case projects/tasks were assigned to the application instead of the Auth ID
+                const { data: apps } = await supabase
+                    .from("w_internship_applications")
+                    .select("id")
+                    .eq("user_id", uid);
+                
+                const searchIds = [uid, ...(apps?.map(a => a.id) || [])];
+
                 const { data: projDevs } = await supabase
                     .from("p_project_developers")
                     .select("project_id")
-                    .eq("developer_id", uid);
+                    .in("developer_id", searchIds);
                 
                 let pIds = projDevs?.map(pd => pd.project_id) || [];
 
@@ -58,7 +66,7 @@ export default function InternTasks() {
                 const { data: myTasks } = await supabase
                     .from("p_tasks")
                     .select("*")
-                    .eq("assignee_id", uid)
+                    .in("assignee_id", searchIds)
                     .order("created_at", { ascending: false });
                 
                 setTasks(myTasks || []);
