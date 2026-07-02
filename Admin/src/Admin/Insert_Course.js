@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "react-toastify";
-import axios from "axios";
 import { 
   Trash2, Plus, Save, Layers, BookOpen, 
   Calendar, FileText, LayoutList, CheckCircle2 
 } from "lucide-react";
 import { useAuthModal } from "../context/AuthModalContext";
+import { supabase } from "../supabaseClient";
 import { useNavigate } from "react-router-dom";
 
-const BASE_URL =process.env.REACT_APP_API_URL;
 
 
 
@@ -19,7 +18,7 @@ function Insert_Course() {
     course_name: "",
     course_domain: "",
     description: "",
-    course_level: "",
+    course_level: "Beginner",
     courseFee: "", // Already existed in your state, now connected to UI
     how_many_weeks: "",
     total_enrolled: "",
@@ -33,8 +32,14 @@ function Insert_Course() {
     ],
   });
 
-  const { user, loadingUser } = useAuthModal();
-  const navigate = useNavigate();
+const navigate = useNavigate();
+const { profile, loadingUser } = useAuthModal();
+
+useEffect(() => {
+  if (!loadingUser && (!profile || profile.role !== "admin")) {
+    navigate("/");
+  }
+}, [profile, loadingUser, navigate]);
 
   // 🔹 Update input fields
   const handleChange = (e) => {
@@ -105,57 +110,79 @@ function Insert_Course() {
   };
 
   useEffect(() => {
-    if (!loadingUser) {
-      if (!user) {
-        navigate("/");
-        return;
-      }
-      if (user?.UserRole !== "Admin") {
-        navigate("/");
-        return;
-      }
-    }
-  }, [user, loadingUser]);
+  if (!loadingUser && profile?.role !== "admin") {
+    navigate("/");
+  }
+}, [profile, loadingUser, navigate]);
 
   // ================== SUBMIT ==================
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    try {
-      setLoading(true);
+  try {
+    setLoading(true);
 
-      const res = await axios.post(`${BASE_URL}/api/course/addcourse`, formData, {
-        withCredentials: true
-      });
+const {
+  data: { session },
+} = await supabase.auth.getSession();
 
-      toast.success(res.data.message);
-      console.log("Course Added:", res.data);
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "create_course",
 
-      // Reset form
-      setFormData({
-        course_name: "",
-        course_domain: "",
-        description: "",
-        course_level: "",
-        courseFee: "",
-        how_many_weeks: "",
-        total_enrolled: "",
-        course_array: [""],
-        course_week_array: [
-          {
-            week: "",
-            description: "",
-            week_array: [""],
-          },
-        ],
-      });
-    } catch (error) {
-      console.error("Error adding course:", error);
-      toast.error(error.response?.data?.message || "Something went wrong!");
-    } finally {
-      setLoading(false);
-    }
-  };
+      course_name: formData.course_name,
+      course_domain: formData.course_domain,
+      description: formData.description,
+      course_level: formData.course_level,
+      how_many_weeks: Number(formData.how_many_weeks) || 0,
+      total_enrolled: Number(formData.total_enrolled) || 0,
+      course_array: formData.course_array,
+      course_week_array: formData.course_week_array,
+      coursefee: Number(formData.courseFee) || 0,
+    }),
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.error || "Failed to create course");
+}
+
+
+    toast.success("Course added successfully!");
+
+    setFormData({
+      course_name: "",
+      course_domain: "",
+      description: "",
+      course_level: "Beginner",
+      courseFee: "",
+      how_many_weeks: "",
+      total_enrolled: "",
+      course_array: [""],
+      course_week_array: [
+        {
+          week: "",
+          description: "",
+          week_array: [""],
+        },
+      ],
+    });
+  } catch (error) {
+    console.error(error);
+    toast.error(error.message || "Something went wrong!");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#020c1b] pt-24 pb-12 px-4 md:px-8 transition-colors duration-300 font-sans">
@@ -189,13 +216,32 @@ function Insert_Course() {
               <InputGroup label="Domain" name="course_domain" value={formData.course_domain} onChange={handleChange} placeholder="e.g. Web Development" />
               
               {/* Level and Duration Row */}
-              <div className="grid grid-cols-2 gap-4">
-                <InputGroup label="Level" name="course_level" value={formData.course_level} onChange={handleChange} placeholder="Beginner" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    Course Level
+                  </label>
+                  <div className="flex gap-4 items-center bg-slate-50 dark:bg-[#112240] border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3">
+                    {["Beginner", "Intermediate", "Advanced"].map((level) => (
+                      <label key={level} className="flex items-center gap-2 text-slate-700 dark:text-slate-300 text-sm font-medium cursor-pointer">
+                        <input
+                          type="radio"
+                          name="course_level"
+                          value={level}
+                          checked={formData.course_level === level}
+                          onChange={handleChange}
+                          className="w-4 h-4 text-emerald-500 bg-slate-100 border-slate-300 focus:ring-emerald-500 focus:ring-2 dark:bg-slate-700 dark:border-slate-600"
+                        />
+                        {level}
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <InputGroup label="Duration (Weeks)" name="how_many_weeks" value={formData.how_many_weeks} onChange={handleChange} placeholder="8" />
               </div>
               
               {/* Fee and Enrolled Row - ADDED HERE */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InputGroup 
                   label="Course Fee (₹)" 
                   name="courseFee" 
@@ -253,7 +299,7 @@ function Insert_Course() {
                     value={item}
                     onChange={(e) => handleCourseArrayChange(i, e.target.value)}
                     placeholder={`Feature highlight ${i + 1}`}
-                    className="flex-1 bg-slate-50 dark:bg-[#112240] border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                    className="flex-1 min-w-0 bg-slate-50 dark:bg-[#112240] border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
                   />
                   <button 
                     type="button" 
@@ -341,7 +387,7 @@ function Insert_Course() {
                             value={topic}
                             onChange={(e) => handleWeekArrayChange(wIndex, tIndex, e.target.value)}
                             placeholder="Topic title"
-                            className="flex-1 bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-emerald-500 focus:outline-none py-1 text-slate-700 dark:text-slate-300 text-sm transition-colors"
+                            className="flex-1 min-w-0 bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-emerald-500 focus:outline-none py-1 text-slate-700 dark:text-slate-300 text-sm transition-colors"
                           />
                           <button 
                             type="button" 

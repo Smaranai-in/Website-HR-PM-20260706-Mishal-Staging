@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import { useAuthModal } from "../context/AuthModalContext";
 import { supabase } from "../supabaseClient";
 
 const EnrollmentForm = ({ courseId }) => {
-  const BASE_URL = process.env.REACT_APP_API_URL;
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -38,6 +36,7 @@ const EnrollmentForm = ({ courseId }) => {
   };
 
   const handleSubmit = async (e) => {
+    
     e.preventDefault();
 
     const required = [
@@ -60,29 +59,48 @@ const EnrollmentForm = ({ courseId }) => {
     try {
       setLoading(true);
 
-      const { error } = await supabase
-        .from("w_course_enrollments")
-        .insert([
-          {
-            user_id: user.id, // 🔐 MUST be auth user id
-            name: formData.fullName,
-            email: formData.email,
-            phno: formData.phone,
-            city: formData.city,
-            state: formData.state,
-            country: formData.country,
-            college_university: formData.college,
-            degree_program: formData.degree,
-            year_of_study: formData.year,
-            field_of_study: formData.major,
-            prior_experience: formData.experience,
-            how_did_you_hear_about_us: formData.referral,
-            reason_for_taking_course: formData.goals,
-            course_id: courseId,
-          },
-        ]);
+    const {
+  data: { session },
+} = await supabase.auth.getSession();
 
-      if (error) throw error;
+if (!session) {
+  throw new Error("Please login again");
+}
+
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "create_course_enrollment",
+
+      name: formData.fullName,
+      email: formData.email,
+      phno: formData.phone,
+      city: formData.city,
+      state: formData.state,
+      country: formData.country,
+      college_university: formData.college,
+      degree_program: formData.degree,
+      year_of_study: formData.year,
+      field_of_study: formData.major,
+      prior_experience: formData.experience,
+      how_did_you_hear_about_us: formData.referral,
+      reason_for_taking_course: formData.goals,
+      course_id: courseId,
+    }),
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.error);
+}
 
       toast.success("🎓 Enrolled Successfully!");
 

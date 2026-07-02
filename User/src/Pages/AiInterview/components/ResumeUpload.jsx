@@ -14,36 +14,44 @@ export default function ResumeUpload({ userId, userName, userEmail, onNext, onLo
   const [useExisting, setUseExisting] = useState(false);
   const [fetchingResume, setFetchingResume] = useState(true);
 
+  const callEdge = async (action, payload = {}) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("No active session token");
+    }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || "Edge request failed");
+    }
+
+    return result;
+  };
+
   // Fetch previous resume if user already provided one
   useEffect(() => {
     const fetchExistingResume = async () => {
       try {
         setFetchingResume(true);
-        // First check internship applications
-        const { data: internshipData } = await supabase
-          .from('internship_applications')
-          .select('cv_url')
-          .eq('user_id', userId)
-          .maybeSingle();
+        const result = await callEdge("get_ai_interview_profile");
+        const resumeUrl = result.cv_url || result.resume_url;
 
-        if (internshipData?.cv_url) {
-          setExistingResumeUrl(internshipData.cv_url);
-          setUseExisting(true);
-          return;
-        }
-
-        // If not found, check previous interviews
-        const { data: interviewData } = await supabase
-          .from('interviews')
-          .select('resume_url')
-          .eq('user_id', userId)
-          .not('resume_url', 'is', null)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (interviewData?.resume_url) {
-          setExistingResumeUrl(interviewData.resume_url);
+        if (resumeUrl) {
+          setExistingResumeUrl(resumeUrl);
           setUseExisting(true);
         }
       } catch (error) {
@@ -53,24 +61,61 @@ export default function ResumeUpload({ userId, userName, userEmail, onNext, onLo
       }
     };
 
-    if (userId) {
-      fetchExistingResume();
-    }
+    if (userId) fetchExistingResume();
   }, [userId]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (file && file.type === 'application/pdf') {
-      setResumeFile(file);
-      setError('');
-    } else {
-      setError('Please upload a PDF file');
-      setResumeFile(null);
+    if (file) {
+      if (file.type === 'application/pdf') {
+        if (file.size > 10 * 1024 * 1024) {
+          setError('File size must be under 10MB');
+          setResumeFile(null);
+        } else {
+          setResumeFile(file);
+          setError('');
+        }
+      } else {
+        setError('Please upload a PDF file');
+        setResumeFile(null);
+      }
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsHoveringFile(false);
+    setUseExisting(false);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      if (file.type === 'application/pdf') {
+        if (file.size > 10 * 1024 * 1024) {
+          setError('File size must be under 10MB');
+          setResumeFile(null);
+        } else {
+          setResumeFile(file);
+          setError('');
+        }
+      } else {
+        setError('Please upload a PDF file');
+        setResumeFile(null);
+      }
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const trimmedJobRole = jobRole.trim();
+    if (!trimmedJobRole) {
+      setError('Please enter a valid job role.');
+      return;
+    }
+
+    if (trimmedJobRole.length > 100) {
+      setError('Target job role must be under 100 characters.');
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -82,7 +127,7 @@ export default function ResumeUpload({ userId, userName, userEmail, onNext, onLo
       } else if (resumeFile) {
         setUploadProgress('Uploading resume (optional)...');
 
-        const fileName = `${userId}-${Date.now()}.pdf`;
+        const fileName = `${crypto.randomUUID()}.pdf`;
         const { error: uploadError } = await supabase.storage
           .from('Interview_Resumes')
           .upload(fileName, resumeFile);
@@ -98,25 +143,43 @@ export default function ResumeUpload({ userId, userName, userEmail, onNext, onLo
 
       setUploadProgress('Creating interview session...');
 
-      const { data: interview, error: dbError } = await supabase
-        .from('interviews')
-        .insert({
-          user_id: userId,
-          resume_text: null,
-          resume_url: resumeUrl,
-          job_role: jobRole,
-          skill_rating: skillRating,
-          status: 'in_progress',
-        })
-        .select()
-        .single();
+     const {
+  data: { session },
+} = await supabase.auth.getSession();
 
-      if (dbError) throw dbError;
+if (!session) {
+  throw new Error("Please login again");
+}
+
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "create_interview",
+      resume_url: resumeUrl,
+      job_role: trimmedJobRole,
+      skill_rating: skillRating,
+    }),
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.error);
+}
+
+const interview = result.interview;
 
       onNext({
         interviewId: interview.id,
         resumeText: null,
-        jobRole,
+        jobRole: trimmedJobRole,
         skillRating,
       });
     } catch (err) {
@@ -134,7 +197,7 @@ export default function ResumeUpload({ userId, userName, userEmail, onNext, onLo
         <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-emerald-500/10 dark:bg-emerald-500/5 rounded-full blur-[120px] animate-blob" />
         <div className="absolute top-[30%] right-[-10%] w-[500px] h-[500px] bg-cyan-500/10 dark:bg-cyan-500/5 rounded-full blur-[100px] animate-blob animation-delay-2000" />
         <div className="absolute bottom-[-10%] left-[20%] w-[500px] h-[500px] bg-indigo-500/10 dark:bg-indigo-500/5 rounded-full blur-[100px] animate-blob animation-delay-4000" />
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] dark:opacity-10" />
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.65\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E')] opacity-[0.03] dark:opacity-10" />
 
         {/* Floating particles */}
         <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-emerald-500/30 rounded-full animate-float" />
@@ -253,6 +316,12 @@ export default function ResumeUpload({ userId, userName, userEmail, onNext, onLo
                       }`}
                     onMouseEnter={() => setIsHoveringFile(true)}
                     onMouseLeave={() => setIsHoveringFile(false)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsHoveringFile(true);
+                    }}
+                    onDragLeave={() => setIsHoveringFile(false)}
+                    onDrop={handleDrop}
                   >
                     <div className={`absolute -inset-0.5 rounded-2xl opacity-0 transition-all duration-300 ${isHoveringFile ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 blur-lg' : ''
                       }`} />
@@ -343,6 +412,7 @@ export default function ResumeUpload({ userId, userName, userEmail, onNext, onLo
                     value={jobRole}
                     onChange={(e) => setJobRole(e.target.value)}
                     required
+                    maxLength={100}
                     className="relative w-full px-5 py-4 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-all duration-200 shadow-inner"
                     placeholder="e.g., Full Stack Developer, Data Scientist, Product Manager"
                   />

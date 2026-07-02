@@ -11,6 +11,20 @@ This project is a **User Application Management System** designed to manage and 
 
 The system uses **Supabase** as the backend for authentication, database, storage (buckets), and edge functions, while the frontend is built using **Node.js / React**.
 
+### 🌟 New: Professional Pro Workspace
+Upon selection, interns gain access to a state-of-the-art "Pro" management portal featuring:
+*   ✨ **Advanced Glassmorphism UI**: A premium, modern interface with backdrop blurs and ambient background effects.
+*   📈 **Real-time Performance Analytics**: Dynamic stat cards tracking task completion, in-progress work, and overall project velocity.
+*   🎯 **Task Orchestration**: A high-fidelity task board with status-based accent bars, priority levels, and interactive progress monitoring.
+*   🕒 **Precision Attendance**: Seamless check-in/out and break tracking with immediate visual confirmation.
+*   📊 **Intelligent Reporting**: Streamlined submission of daily reports with integrated supervisor feedback loops.
+*   🔐 **Absolute Session Persistence**: A robust auth restoration engine ensuring zero-logouts on page refresh or browser restart.
+
+### 🛡️ Core Infrastructure: Protected Routing
+The application now utilizes a centralized `ProtectedRoute` architecture:
+*   **Persistent URL Restoration**: The app remembers your exact page during refresh and session restoration.
+*   **Auth Initialization Guard**: No routes are rendered until the Supabase session is definitively resolved, preventing flicker and premature redirects.
+
 ---
 
 ## 🔄 End-to-End Workflow
@@ -18,9 +32,9 @@ The system uses **Supabase** as the backend for authentication, database, storag
 This section describes how a user interacts with the system from start to finish.
 
 1.  **Registration & Login**:
-    *   A new user visits the site and signs up using Email or Google OAuth.
-    *   Once logged in, they are redirected to the dashboard.
-    *   A profile is automatically created in the `w_users` table.
+    *   A new user visits the site and signs up using Email or Google OAuth via the unified `/user/dashboard/login` portal.
+    *   Once logged in, they are redirected based on their role (Intern/HR/Supervisor).
+    *   A profile is automatically created in the `w_users` table if it doesn't exist.
 
 2.  **Profile Setup**:
     *   The user navigates to the Profile section to add details like Phone Number, University, and Profile Picture.
@@ -32,17 +46,27 @@ This section describes how a user interacts with the system from start to finish
     *   Submits the form. The data is saved to `w_internship_applications`.
     *   The user can track their comprehensive timeline (Pending -> Interview -> Selected) and view Admin remarks centrally on their **My Page** dashboard.
 
+4.  **Premium Intern Dashboard Interface**:
+    *   Selected interns use the dashboard to manage daily operations.
+    *   Features include an Attendance Banner, Today's Priority Tasks, and Quick Stats for performance overview.
+    *   All activities are synchronized with the Admin Panel for supervisor oversight.
+
 4.  **Taking an AI Interview**:
     *   If required for an internship, users navigate to **My Page** to start an AI Interview.
     *   The interview utilizes the GEMINI model for technical Q&A based on the uploaded resume.
     *   Once finished, users can review their performance metrics, scores, and AI feedback on the **My Page** dashboard.
 
-5.  **Enrolling in a Course**:
+5.  **Assessment Assignments (New Integration)**:
+    *   Internship applicants get assigned specific evaluation tasks based on their applied role.
+    *   Assessments feature a countdown timer (e.g., 3 days limit) and dynamic assignment previews.
+    *   Submissions are sent via URL references directly tracked within the backend DB.
+
+6.  **Enrolling in a Course**:
     *   User browses available courses.
     *   Clicks "Enroll" on a course.
     *   An entry is made in `w_course_enrollments`, and the user gains access to course materials.
 
-5.  **Research & Projects**:
+7.  **Research & Projects**:
     *   Users can similarly submit proposals for Research or Academic Projects.
     *   Admins review these proposals and approve/reject them.
 
@@ -192,6 +216,34 @@ CREATE TABLE public.w_course_enrollments (
   course_id UUID,
   status TEXT DEFAULT 'enrolled',
   created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 7. Assessment Outlines (New Integration)
+CREATE TABLE internship_assessments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    heading TEXT NOT NULL,
+    role TEXT NOT NULL,
+    details TEXT,
+    difficulty TEXT DEFAULT 'Intermediate',
+    days INTEGER DEFAULT 3,
+    hrs INTEGER,
+    hasimage BOOLEAN DEFAULT false,
+    taskimage TEXT,
+    isactive BOOLEAN DEFAULT true
+);
+
+-- 8. Student Assessments (New Integration)
+CREATE TABLE internship_student_assessments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    user_id UUID NOT NULL,
+    internship_application_id UUID NOT NULL REFERENCES w_internship_applications(id) ON DELETE CASCADE,
+    assessment_outline_id UUID NOT NULL REFERENCES internship_assessments(id) ON DELETE CASCADE,
+    status TEXT DEFAULT 'assigned',
+    due_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    submission_url TEXT,
+    submitted_at TIMESTAMP WITH TIME ZONE
 );
 ```
 </details>

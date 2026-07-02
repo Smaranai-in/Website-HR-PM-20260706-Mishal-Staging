@@ -18,10 +18,33 @@ export default function AdminChatArea({ user, selectedUser, onlineUsers, onToggl
     const [activeMenuId, setActiveMenuId] = useState(null)
     const [showEmojiPicker, setShowEmojiPicker] = useState(false)
     const [showPlusMenu, setShowPlusMenu] = useState(false)
+
+    const callEdge = async (action, payload = {}) => {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) throw new Error("Please login again")
+
+        const response = await fetch(
+            `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify({ action, ...payload }),
+            }
+        )
+
+        const result = await response.json().catch(() => ({}))
+        if (!response.ok || result?.error) {
+            throw new Error(result?.error || "Edge request failed")
+        }
+        return result
+    }
     const [selectedImage, setSelectedImage] = useState(null)
     const [pendingFile, setPendingFile] = useState(null)
     const [previewUrl, setPreviewUrl] = useState(null)
-
+    const sendingRef = useRef(false);
     const messagesEndRef = useRef(null)
     const inputRef = useRef(null)
     const fileInputRef = useRef(null)
@@ -34,35 +57,16 @@ export default function AdminChatArea({ user, selectedUser, onlineUsers, onToggl
         if (!user || !selectedUser) return
         if (showLoading) setLoading(true)
 
-        // Get all admin IDs so we can fetch messages regardless of which admin they spoke with
-        const { data: admins } = await supabase
-            .from('w_users')
-            .select('id')
-            .eq('role', 'admin')
-
-        const adminIds = (admins || []).map(a => a.id)
-
-        // Fetch all messages where selectedUser is sender/receiver with any admin
-        let query = supabase
-            .from('w_messages')
-            .select(`*, reply_to_message:w_messages!reply_to_id(*)`)
-            .order('created_at', { ascending: true })
-
-        if (adminIds.length > 0) {
-            // Messages from client to any admin, OR from any admin to client
-            query = query.or(
-                `and(sender_id.eq.${selectedUser.id},receiver_id.in.(${adminIds.join(',')})),and(sender_id.in.(${adminIds.join(',')}),receiver_id.eq.${selectedUser.id})`
-            )
-        } else {
-            // Fallback to logged-in admin only
-            query = query.or(
-                `and(sender_id.eq.${user.id},receiver_id.eq.${selectedUser.id}),and(sender_id.eq.${selectedUser.id},receiver_id.eq.${user.id})`
-            )
+        try {
+            const result = await callEdge("get_admin_chat_messages", { client_id: selectedUser.id })
+            if (result.success) {
+                setMessages(result.messages || [])
+            }
+        } catch (err) {
+            console.error("Error fetching messages:", err)
+        } finally {
+            setLoading(false)
         }
-
-        const { data, error } = await query
-        if (!error) setMessages(data || [])
-        setLoading(false)
     }, [user, selectedUser])
 
     useEffect(() => {
@@ -77,30 +81,47 @@ export default function AdminChatArea({ user, selectedUser, onlineUsers, onToggl
             .channel(`admin-chat-${selectedUser.id}`)
             .on('postgres_changes',
                 { event: '*', schema: 'public', table: 'w_messages' },
-                (payload) => {
-                    const msg = payload.new || payload.old
-                    const isRelevant =
-                        (String(msg.sender_id) === String(user.id) && String(msg.receiver_id) === String(selectedUser.id)) ||
-                        (String(msg.sender_id) === String(selectedUser.id) && String(msg.receiver_id) === String(user.id))
 
-                    if (!isRelevant) return
+               (payload) => {
+    console.log("ADMIN REALTIME:", payload);
 
-                    if (payload.eventType === 'INSERT') {
-                        setMessages(prev => {
-                            if (prev.some(m => m.id === payload.new.id)) return prev;
-                            return [...prev, payload.new];
-                        });
-                    } else if (payload.eventType === 'UPDATE') {
-                        setMessages(prev => prev.map(m => m.id === payload.new.id ? { ...m, ...payload.new } : m))
-                    } else if (payload.eventType === 'DELETE') {
-                        setMessages(prev => prev.map(m => m.id === payload.old.id ? { ...m, is_deleted: true, content: 'This message was deleted' } : m))
-                    }
-                }
+    const msg = payload.new || payload.old;
+
+    const isRelevant =
+        String(msg.sender_id) === String(selectedUser.id) ||
+        String(msg.receiver_id) === String(selectedUser.id);
+
+    if (!isRelevant) return;
+
+if (payload.eventType === 'INSERT') {
+    fetchMessages();
+} else if (payload.eventType === 'UPDATE') {
+        setMessages(prev =>
+            prev.map(m =>
+                m.id === payload.new.id ? { ...m, ...payload.new } : m
             )
-            .subscribe()
+        );
+    } else if (payload.eventType === 'DELETE') {
+        setMessages(prev =>
+            prev.map(m =>
+                m.id === payload.old.id
+                    ? {
+                        ...m,
+                        is_deleted: true,
+                        content: 'This message was deleted'
+                    }
+                    : m
+            )
+        );
+    }
+}
+            )
+            .subscribe((status) => {
+    console.log("ADMIN STATUS:", status);
+})
 
         return () => supabase.removeChannel(channel)
-    }, [user, selectedUser])
+    }, [user, selectedUser, fetchMessages])
 
     // Auto-scroll
     useEffect(() => {
@@ -126,33 +147,100 @@ export default function AdminChatArea({ user, selectedUser, onlineUsers, onToggl
     }, [showPlusMenu])
 
     // Mark received messages as read
-    useEffect(() => {
-        if (!user || !selectedUser || messages.length === 0) return
-        const unread = messages
-            .filter(m => m.sender_id === selectedUser.id && m.status !== 'read')
-            .map(m => m.id)
-        if (unread.length > 0) {
-            supabase.from('w_messages').update({ status: 'read' }).in('id', unread)
-        }
-    }, [messages, user, selectedUser])
+ useEffect(() => {
+    if (!user || !selectedUser || messages.length === 0) return;
 
-    const sendMessage = async (e, replyToId = null) => {
-        e?.preventDefault()
-        if (!newMessage.trim() || isSending) return
-        setIsSending(true)
-        const text = newMessage.trim()
-        setNewMessage('')
+    const unread = messages
+        .filter(
+            m =>
+                m.sender_id === selectedUser.id &&
+                m.receiver_id === user.id &&
+                m.status !== 'read'
+        )
+        .map(m => m.id);
 
-        const { error } = await supabase.from('w_messages').insert({
-            sender_id: user.id,
-            receiver_id: selectedUser.id,
-            content: text,
-            reply_to_id: replyToId || null,
-            status: 'sent',
-        })
-        if (error) console.error('Send error:', error)
-        setIsSending(false)
+    console.log("UNREAD IDS:", unread);
+
+    if (unread.length > 0) {
+        (async () => {
+           const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+if (!session) return;
+
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "mark_messages_read",
+      ids: unread,
+    }),
+  }
+);
+
+const result = await response.json();
+
+console.log(result);
+        })();
     }
+}, [messages, user, selectedUser]);
+
+const sendMessage = async (e, replyToId = null) => {
+    e?.preventDefault();
+
+    if (!newMessage.trim()) return;
+
+    // immediate lock
+    if (sendingRef.current) return;
+
+    sendingRef.current = true;
+    setIsSending(true);
+
+    try {
+        const text = newMessage.trim();
+        setNewMessage('');
+
+        const {
+            data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session) {
+            throw new Error("Please login again");
+        }
+
+        const response = await fetch(
+            `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify({
+                    action: "send_chat_message",
+                    receiver_id: selectedUser.id,
+                    content: text,
+                    reply_to_id: replyToId || null,
+                }),
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error);
+        }
+    } finally {
+        sendingRef.current = false;
+        setIsSending(false);
+    }
+};
 
     const handleFileUpload = async (file) => {
         if (!file) return
@@ -167,24 +255,103 @@ export default function AdminChatArea({ user, selectedUser, onlineUsers, onToggl
         const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path)
         const content = isImage ? `[IMAGE] ${publicUrl}` : `[FILE] ${publicUrl}|${file.name}`
 
-        await supabase.from('w_messages').insert({
-            sender_id: user.id,
-            receiver_id: selectedUser.id,
-            content,
-            status: 'sent',
-        })
+       const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+if (!session) {
+  throw new Error("Please login again");
+}
+
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "send_chat_message",
+      receiver_id: selectedUser.id,
+      content,
+    }),
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.error);
+}
         setPendingFile(null)
         setPreviewUrl(null)
     }
 
-    const handleEditMessage = async (id, content) => {
-        await supabase.from('w_messages').update({ content, is_edited: true }).eq('id', id)
-        setEditingMessageId(null)
-    }
+const handleEditMessage = async (id, content) => {
+ const {
+  data: { session },
+} = await supabase.auth.getSession();
 
-    const handleDeleteMessage = async (id) => {
-        await supabase.from('w_messages').update({ is_deleted: true, content: 'This message was deleted' }).eq('id', id)
-    }
+if (!session) {
+  throw new Error("Please login again");
+}
+
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "edit_chat_message",
+      id,
+      content,
+    }),
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.error);
+}
+
+setEditingMessageId(null);
+}
+
+   const handleDeleteMessage = async (id) => {
+   const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+if (!session) {
+  throw new Error("Please login again");
+}
+
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "delete_chat_message",
+      id,
+    }),
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.error);
+}
+}
 
     const handleKeyDown = async (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -480,7 +647,10 @@ export default function AdminChatArea({ user, selectedUser, onlineUsers, onToggl
             <form onSubmit={async (e) => {
                 e.preventDefault()
                 if (pendingFile) { await handleFileUpload(pendingFile); setReplyingTo(null) }
-                if (newMessage.trim() && !isSending) { setIsSending(true); try { await sendMessage(e, replyingTo?.id); setReplyingTo(null) } finally { setIsSending(false) } }
+            if (newMessage.trim()) {
+    await sendMessage(e, replyingTo?.id);
+    setReplyingTo(null);
+}
                 setTimeout(() => inputRef.current?.focus(), 10)
             }} className="admin-input-form relative !flex-col !items-stretch !gap-0 !pb-2">
 

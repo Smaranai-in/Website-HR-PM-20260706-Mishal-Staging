@@ -13,7 +13,13 @@ This is the **Admin Dashboard** for the User Application Management System. It a
 
 2.  **Reviewing Applications**:
     *   **Internships**: Admins see a list of all applicants. They can review Resumes, attach persistent remarks, and change statuses (Pending → Interview Scheduled → Selected). These remarks and status updates are visible linearly on the user's **My Page** timeline.
+    *   **Pro Workspace Oversight**: Monitoring of the **Professional Pro Workspace**, including real-time performance analytics, task velocity, and project health indicators.
+    *   **Absolute Session Persistence**: Implemented a robust auth restoration engine ensuring that Admins stay logged in across page refreshes and browser restarts.
+    *   **Attendance Tracking**: Admins can monitor real-time check-in/out and break history for interns.
+    *   **Daily Reports**: Review and provide feedback on daily work summaries submitted by interns.
     *   **AI Interviews**: Admins can review the outcome of automated AI Interviews (including proctoring details, tab switches, and scores) directly linked to the user's application.
+    *   **Assessments**: Following the initial AI Interview, Admins can review Assessment tasks submitted by applicants (stored in `internship_student_assessments`) and evaluate their GitHub/Drive URLs.
+    *   **Task Management**: Oversight of tasks assigned to interns, categorized by priority and deadline.
     *   **Research & Projects**: Similar workflows for academic and research proposals.
 
 3.  **Managing Courses**:

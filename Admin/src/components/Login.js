@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import axios from "axios";
 import { toast } from "react-toastify";
 import { 
   FaEye, 
   FaEyeSlash, 
   FaEnvelope, 
-  FaSpinner // Added Spinner Icon
+  FaSpinner
 } from "react-icons/fa";
 import { useAuthModal } from "../context/AuthModalContext";
-import { supabase } from "../supabaseClient";
 
 function Login({ onClose, onSignup, onForgot }) {
   const [email, setEmail] = useState("");
@@ -30,7 +28,8 @@ function Login({ onClose, onSignup, onForgot }) {
 
     try {
       await login(email, password);
-      toast.success("Login successfull ");
+
+      toast.success("Login successful");
       setLoading(false); // Stop Loading on success
       
       setTimeout(() => {
@@ -38,8 +37,14 @@ function Login({ onClose, onSignup, onForgot }) {
       }, 800);
       
     } catch (error) {
-      toast.error("error occur at login", error);
-      setLoading(false); // Stop Loading on error
+      console.error("LOGIN ERROR:", error);
+      // Show specific message for admin-only errors
+      if (error.message && error.message.includes("Admin accounts only")) {
+        toast.error("Access denied. Admin accounts only.");
+      } else {
+        toast.error(error.message);
+      }
+      setLoading(false);
     }
   };
 

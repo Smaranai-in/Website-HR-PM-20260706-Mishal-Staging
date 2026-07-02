@@ -1,8 +1,8 @@
 // src/components/AdminCourseEnrollments.js
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { useAuthModal } from "../context/AuthModalContext";
+import { supabase } from "../supabaseClient";
 import {
   Search,
   BookOpen,
@@ -16,6 +16,7 @@ import {
   GraduationCap,
   Briefcase,
   Info,
+  Filter,
 } from "lucide-react";
 
 export default function AdminCourseEnrollments() {
@@ -25,40 +26,59 @@ export default function AdminCourseEnrollments() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterView, setFilterView] = useState("All");
 
-  const { user, loadingUser } = useAuthModal();
+  const { profile, loadingUser } = useAuthModal();
   const navigate = useNavigate();
 
-  const BASE_URL =process.env.REACT_APP_API_URL;
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+
 
   // ---------------- AUTH CHECK ----------------
-  useEffect(() => {
-    if (!loadingUser) {
-      if (!user || user?.UserRole !== "Admin") {
-        navigate("/");
-      }
+useEffect(() => {
+  if (!loadingUser) {
+    if (!profile || profile.role !== "admin") {
+      navigate("/");
     }
-  }, [user, loadingUser, navigate]);
+  }
+}, [profile, loadingUser, navigate]);
+
+  const callEdge = async (action, payload = {}) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("No active session token");
+    }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || "Edge request failed");
+    }
+
+    return result;
+  };
 
   // ---------------- FETCH DATA ----------------
   useEffect(() => {
     const loadEnrollments = async () => {
       try {
         setLoading(true);
-        const res = await axios.get(
-          `${BASE_URL}/api/courseEnroll/getAllCourseEnroll`,
-          { withCredentials: true }
-        );
 
-        console.log(res);
-        // Try multiple possible keys to be safe
-        const apiData =
-          res.data?.domains ||
-          res.data?.enrollments ||
-          res.data?.data ||
-          [];
+        const res = await callEdge("get_admin_course_enrollments");
 
-        console.log("API course enrollments:", apiData);
-        setEnrollments(Array.isArray(apiData) ? apiData : []);
+        setEnrollments(res.data || []);
       } catch (err) {
         console.error("Error loading enrollments:", err);
       } finally {
@@ -144,15 +164,28 @@ export default function AdminCourseEnrollments() {
   // ---------------- UI ----------------
   return (
     <div className="flex h-screen bg-[#f3f8f7] dark:bg-[#020c1b] font-sans text-slate-800 dark:text-slate-200 overflow-hidden pt-16 transition-colors duration-300">
+      {/* BACKDROP OVERLAY */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
       {/* SIDEBAR */}
-      <aside className="w-72 bg-white dark:bg-[#0A0F2C] border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0 z-20 shadow-sm transition-colors duration-300">
-        <div className="p-6 border-b border-gray-100 dark:border-gray-800">
+      <aside className={`fixed inset-y-0 left-0 w-72 bg-white dark:bg-[#0A0F2C] border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0 z-40 shadow-xl lg:shadow-sm transition-all duration-300 transform lg:relative lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
           <h2 className="text-xl font-bold flex items-center gap-2 text-teal-700 dark:text-teal-400">
             <div className="w-8 h-8 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
               ✨
             </div>
             Course
           </h2>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <div className="p-4 flex-1 overflow-hidden flex flex-col">
@@ -194,21 +227,31 @@ export default function AdminCourseEnrollments() {
       <main className="flex-1 flex overflow-hidden relative">
         {/* CENTER COLUMN: LIST */}
         <div
-          className={`flex flex-col p-8 overflow-hidden transition-all duration-300 ${
-            selected ? "w-7/12" : "w-full"
+          className={`flex flex-col p-4 sm:p-8 overflow-hidden transition-all duration-300 ${
+            selected ? "lg:w-7/12 w-full" : "w-full"
           }`}
         >
           {/* HEADER */}
           <div className="mb-8">
-            <div className="inline-flex items-center px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm font-medium mb-3">
-              <BookOpen size={14} className="mr-2" /> Course Management
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm font-medium mb-3">
+                  <BookOpen size={14} className="mr-2" /> Course Management
+                </div>
+                <h1 className="text-3xl font-bold text-slate-800 dark:text-white">
+                  Course Enrollments{" "}
+                  <span className="text-gray-400 dark:text-gray-500 text-xl font-normal ml-2">
+                    {enrollments.length}
+                  </span>
+                </h1>
+              </div>
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden self-start sm:self-center flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm font-semibold hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-all border border-teal-100 dark:border-teal-800"
+              >
+                <Filter size={16} /> Filters
+              </button>
             </div>
-            <h1 className="text-3xl font-bold text-slate-800 dark:text-white">
-              Course Enrollments{" "}
-              <span className="text-gray-400 dark:text-gray-500 text-xl font-normal ml-2">
-                {enrollments.length}
-              </span>
-            </h1>
           </div>
 
           {/* SEARCH BAR */}
@@ -304,7 +347,7 @@ export default function AdminCourseEnrollments() {
 
         {/* RIGHT COLUMN: DETAILS */}
         {selected && (
-          <div className="w-5/12 bg-white dark:bg-[#0A0F2C] border-l border-gray-200 dark:border-gray-800 flex flex-col shadow-2xl z-30 absolute right-0 h-full duration-300">
+          <div className="w-full lg:w-5/12 bg-white dark:bg-[#0A0F2C] border-l border-gray-200 dark:border-gray-800 flex flex-col shadow-2xl z-30 absolute right-0 h-full duration-300">
             {/* Details Header */}
             <div className="p-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
               <div className="flex justify-between items-start mb-4">

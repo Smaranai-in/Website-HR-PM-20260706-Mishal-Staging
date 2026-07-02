@@ -1,8 +1,8 @@
 // src/components/ResearchApplicantsList.js
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { useAuthModal } from "../context/AuthModalContext";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../supabaseClient";
 import {
   Search,
   LayoutDashboard,
@@ -19,12 +19,9 @@ import {
   School,
   Calendar,
   Trash2, // Ensure Trash2 is imported if used, based on context of previous files
+  Filter,
 } from "lucide-react";
 
-function getAuthHeader() {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 export default function ResearchApplicantsList() {
   const [items, setItems] = useState([]);
@@ -33,7 +30,7 @@ export default function ResearchApplicantsList() {
   const [filterSupport, setFilterSupport] = useState("All");
   const [error, setError] = useState(null);
 
-  const { user, loadingUser } = useAuthModal();
+  const { profile, loadingUser } = useAuthModal();
   const navigate = useNavigate();
   // Added local search state for the UI search bar
   const [searchQuery, setSearchQuery] = useState("");
@@ -46,48 +43,34 @@ export default function ResearchApplicantsList() {
     message: "",
   });
 
-  const BASE_URL =process.env.REACT_APP_API_URL;
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  useEffect(() => {
-    if (!loadingUser) {
-      if (!user || user?.UserRole !== "Admin") navigate("/");
-    }
-  }, [user, loadingUser]);
+ useEffect(() => {
+  if (!loadingUser) {
+    if (!profile || profile.role !== "admin")
+      navigate("/");
+  }
+}, [profile, loadingUser, navigate]);
 
   // ---------------- FETCH DATA (Your Original Logic) ----------------
-  useEffect(() => {
-    async function loadApplicants() {
-      setLoading(true);
+useEffect(() => {
+  async function loadApplicants() {
+    setLoading(true);
 
-      try {
-        const res = await axios.get(
-          `${BASE_URL}/api/research/getResearchData`,
-          { withCredentials: true }
-        );
-
-        const data = res.data.data || [];
-
-        const mapped = data.map((x) => ({
-          ...x,
-          phone_number: x.phone,
-          college_university: x.college,
-          graduation_year: x.grad_year,
-          profile_type: x.role,
-          research_topic: x.topic,
-          research_stage: x.stage,
-        }));
-
-        setItems(mapped);
-      } catch (err) {
-        console.error(err);
-        setError("Failed to load applicants.");
-      } finally {
-        setLoading(false);
-      }
+    try {
+      const res = await callEdge("get_research_enrollments");
+      console.log("Research Data:", res.data);
+      setItems(res.data || []);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to load applicants.");
+    } finally {
+      setLoading(false);
     }
+  }
 
-    loadApplicants();
-  }, []);
+  loadApplicants();
+}, []);
 
   // ---------------- FILTER SUPPORT (Your Original Logic + Search) ----------------
   const filtered = items.filter((it) => {
@@ -109,7 +92,7 @@ export default function ResearchApplicantsList() {
       matchSearch =
         it.full_name?.toLowerCase().includes(q) ||
         it.email?.toLowerCase().includes(q) ||
-        it.research_topic?.toLowerCase().includes(q);
+        it.topic?.toLowerCase()?.includes(q)
     }
 
     return matchSupport && matchSearch;
@@ -135,39 +118,69 @@ export default function ResearchApplicantsList() {
     });
   };
 
-  // ---------------- UPDATE STATUS ----------------
-  const updateStatus = async (id, status) => {
-    try {
-      await axios.patch(
-        `${BASE_URL}/api/research/updateStatus/${id}`,
-        { status },
-        { withCredentials: true }
-      );
+  const callEdge = async (action, payload = {}) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-      setItems((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
-
-      if (selected?.id === id) setSelected({ ...selected, status });
-    } catch (err) {
-      alert("Status update failed.");
-      console.error(err);
+    if (sessionError || !session?.access_token) {
+      throw new Error("No active session token");
     }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || "Edge request failed");
+    }
+
+    return result;
   };
+
+  // ---------------- UPDATE STATUS ----------------
+const updateStatus = async (id, status) => {
+  try {
+    await callEdge("update_research_enrollment_status", { id, status });
+
+    setItems((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, status } : p
+      )
+    );
+
+    if (selected?.id === id) {
+      setSelected({ ...selected, status });
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Status update failed");
+  }
+};
 
   // ---------------- DELETE APPLICANT ----------------
-  const deleteApplicant = async (id) => {
-    try {
-      await axios.delete(
-        `${BASE_URL}/api/research/deleteApplicant/${id}`,
-        { withCredentials: true, headers: getAuthHeader() }
-      );
+const deleteApplicant = async (id) => {
+  try {
+    await callEdge("delete_research_enrollment", { id });
 
-      setItems((prev) => prev.filter((p) => p.id !== id));
-      setSelected(null);
-    } catch (err) {
-      alert("Delete failed.");
-      console.error(err);
-    }
-  };
+    setItems((prev) =>
+      prev.filter((p) => p.id !== id)
+    );
+
+    setSelected(null);
+  } catch (err) {
+    console.error(err);
+    alert("Delete failed");
+  }
+};
 
   // ---------------- CSV EXPORT ----------------
   const escapeCsv = (v) => {
@@ -178,24 +191,24 @@ export default function ResearchApplicantsList() {
 
   const exportCSV = () => {
     const cols = [
-      "id",
-      "full_name",
-      "phone_number",
-      "email",
-      "country",
-      "state",
-      "city",
-      "college_university",
-      "graduation_year",
-      "profile_type",
-      "research_topic",
-      "research_stage",
-      "description",
-      "support_needed",
-      "document_url",
-      "status",
-      "created_at",
-    ];
+  "id",
+  "full_name",
+  "phone",
+  "email",
+  "country",
+  "state",
+  "city",
+  "college",
+  "grad_year",
+  "role",
+  "topic",
+  "stage",
+  "description",
+  "support_needed",
+  "document_url",
+  "status",
+  "created_at",
+];
 
     const header = cols.join(",");
     const rows = items.map((row) =>
@@ -238,15 +251,28 @@ export default function ResearchApplicantsList() {
   // ---------------- UI ----------------
   return (
     <div className="flex h-screen bg-[#f3f8f7] dark:bg-[#020c1b] font-sans text-slate-800 dark:text-slate-200 overflow-hidden mt-16 transition-colors duration-300">
+      {/* BACKDROP OVERLAY */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
       {/* SIDEBAR */}
-      <aside className="w-72 bg-white dark:bg-[#0A0F2C] border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0 z-20 shadow-sm transition-colors duration-300">
-        <div className="p-6 border-b border-gray-100 dark:border-gray-800">
+      <aside className={`fixed inset-y-0 left-0 w-72 bg-white dark:bg-[#0A0F2C] border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0 z-40 shadow-xl lg:shadow-sm transition-all duration-300 transform lg:relative lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
           <h2 className="text-xl font-bold flex items-center gap-2 text-teal-700 dark:text-teal-400">
             <div className="w-8 h-8 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
               ✨
             </div>
             Research Applicants
           </h2>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <div className="p-4">
@@ -302,21 +328,31 @@ export default function ResearchApplicantsList() {
       <main className="flex-1 flex overflow-hidden relative">
         {/* CENTER COLUMN: LIST */}
         <div
-          className={`flex flex-col p-8 overflow-hidden transition-all duration-300 ${
-            selected ? "w-7/12" : "w-full"
+          className={`flex flex-col p-4 sm:p-8 overflow-hidden transition-all duration-300 ${
+            selected ? "lg:w-7/12 w-full" : "w-full"
           }`}
         >
           {/* HEADER */}
           <div className="mb-8">
-            <div className="inline-flex items-center px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm font-medium mb-3">
-              <Users size={14} className="mr-2" /> Research Support
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm font-medium mb-3">
+                  <Users size={14} className="mr-2" /> Research Support
+                </div>
+                <h1 className="text-3xl font-bold text-slate-800 dark:text-white">
+                  Enrollment Requests{" "}
+                  <span className="text-gray-400 dark:text-gray-500 text-xl font-normal ml-2">
+                    {items.length}
+                  </span>
+                </h1>
+              </div>
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden self-start sm:self-center flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm font-semibold hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-all border border-teal-100 dark:border-teal-800"
+              >
+                <Filter size={16} /> Filters
+              </button>
             </div>
-            <h1 className="text-3xl font-bold text-slate-800 dark:text-white">
-              Enrollment Requests{" "}
-              <span className="text-gray-400 dark:text-gray-500 text-xl font-normal ml-2">
-                {items.length}
-              </span>
-            </h1>
           </div>
 
           {/* SEARCH BAR */}
@@ -387,7 +423,7 @@ export default function ResearchApplicantsList() {
                     </p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded truncate max-w-[200px]">
-                        {item.research_topic || "No topic"}
+                        {item.topic || "No topic"}
                       </span>
                     </div>
                   </div>
@@ -421,7 +457,7 @@ export default function ResearchApplicantsList() {
 
         {/* RIGHT COLUMN: DETAILS */}
         {selected && (
-          <div className="w-5/12 bg-white dark:bg-[#0A0F2C] border-l border-gray-200 dark:border-gray-800 flex flex-col shadow-2xl z-30 absolute right-0 h-full animate-in slide-in-from-right-10 duration-300">
+          <div className="w-full lg:w-5/12 bg-white dark:bg-[#0A0F2C] border-l border-gray-200 dark:border-gray-800 flex flex-col shadow-2xl z-30 absolute right-0 h-full animate-in slide-in-from-right-10 duration-300">
             {/* Details Header */}
             <div className="p-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
               <div className="flex justify-between items-start mb-4">
@@ -462,7 +498,7 @@ export default function ResearchApplicantsList() {
                     {selected.full_name}
                   </h2>
                   <p className="text-teal-600 dark:text-teal-400 font-medium">
-                    {selected.profile_type || "Applicant"}
+                    {selected.role || "Applicant"}
                   </p>
                 </div>
               </div>
@@ -480,7 +516,7 @@ export default function ResearchApplicantsList() {
                 <Field
                   icon={<Phone size={14} />}
                   label="Phone"
-                  value={selected.phone_number}
+                  value={selected.phone}
                 />
               </div>
 
@@ -495,7 +531,7 @@ export default function ResearchApplicantsList() {
                 <Field
                   icon={<School size={14} />}
                   label="University"
-                  value={selected.college_university}
+                  value={selected.college}
                 />
               </div>
 
@@ -506,14 +542,14 @@ export default function ResearchApplicantsList() {
                 <div className="space-y-4">
                   <Field
                     label="Topic"
-                    value={selected.research_topic}
+                    value={selected.topic}
                     isFull
                   />
                   <div className="grid grid-cols-2 gap-4">
-                    <Field label="Stage" value={selected.research_stage} />
+                    <Field label="Stage" value={selected.stage} />
                     <Field
                       label="Grad Year"
-                      value={selected.graduation_year}
+                      value={selected.grad_year}
                     />
                   </div>
                   <Field

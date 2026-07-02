@@ -9,6 +9,8 @@ html, body {
   font-family: 'Inter', sans-serif;
   scroll-behavior: smooth;
   background-color: #f9fafb;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 /* Dark mode background */

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../supabaseClient";
 import { Button } from "../../components/ui/button";
+import { fetchDevelopers } from "../../lib/data";
 
 export default function NewProjectPage() {
     const navigate = useNavigate();
@@ -19,17 +20,8 @@ export default function NewProjectPage() {
 
     useEffect(() => {
         async function fetchDevs() {
-            if (!supabase) return;
-            const { data } = await supabase.from("p_developers").select("*");
-            if (data) {
-                const mappedDevs = data.map((d) => ({
-                    ...d,
-                    role: "Developer",
-                    avatarColor: "bg-gray-500",
-                    employeeId: "N/A"
-                }));
-                setDevelopers(mappedDevs);
-            }
+            const devs = await fetchDevelopers();
+            setDevelopers(devs || []);
         }
         fetchDevs();
     }, []);
@@ -66,42 +58,37 @@ export default function NewProjectPage() {
                     throw new Error("Supabase client not initialized");
                 }
 
-                // 1. Insert Project
-                const { data: projectData, error: projectError } = await supabase
-                    .from("p_projects")
-                    .insert([{
-                        name: formData.name,
-                        description: formData.description,
-                        status: formData.status,
-                        start_date: formData.startDate || null,
-                        deadline: formData.deadline || null,
-                        progress: 0,
-                        tags: ["New"]
-                    }])
-                    .select()
-                    .single();
+ const {
+  data: { session },
+} = await supabase.auth.getSession();
 
-                if (projectError) throw projectError;
-                if (!projectData) throw new Error("No data returned from project creation");
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "create_project",
 
-                const projectId = projectData.id;
+      name: formData.name,
+      description: formData.description,
+      status: formData.status,
+      start_date: formData.startDate || null,
+      deadline: formData.deadline || null,
 
-                // 2. Insert Project Developers (if any selected)
-                if (selectedDevs.size > 0) {
-                    const devInserts = Array.from(selectedDevs).map(devId => ({
-                        project_id: projectId,
-                        developer_id: devId
-                    }));
+      developers: Array.from(selectedDevs),
+    }),
+  }
+);
 
-                    const { error: devError } = await supabase
-                        .from("p_project_developers")
-                        .insert(devInserts);
+const result = await response.json();
 
-                    if (devError) {
-                        console.error("Error adding developers:", devError);
-                        alert("Project created, but failed to assign developers.");
-                    }
-                }
+if (!response.ok) {
+  throw new Error(result.error || "Failed to create project");
+}
 
                 navigate("/projects");
                 // Trigger a refresh if needed or just navigate. Using React Router, state might not update automatically on Dashboard effectively unless we have context or refetch.

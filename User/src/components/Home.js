@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import axios from "axios";
 import { toast } from "react-toastify";
 import {
   Award,
@@ -51,8 +50,63 @@ const Home = () => {
 
   const { loadingUser } = useAuthModal();
   const navigate = useNavigate();
+const handleContactSubmit = async (e) => {
+  e.preventDefault();
 
-  const BASE_URL = process.env.REACT_APP_API_URL;
+  if (!name.trim()) return toast.error("Name is required");
+  if (!email.trim()) return toast.error("Email is required");
+  if (!description.trim()) return toast.error("Message is required");
+
+  try {
+    setLoading(true);
+if (!user) {
+  return toast.error("Please login first");
+}
+    const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+if (!session) {
+  throw new Error("Please login again");
+}
+
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "create_contact_message",
+
+      name: name.trim(),
+      email: email.trim(),
+      message: description.trim(),
+    }),
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.error);
+}
+
+    toast.success("Message sent successfully");
+
+    setName("");
+    setEmail("");
+    setDescription("");
+  } catch (err) {
+    toast.error(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
   const renderPage = () => {
     switch (activePage) {
       case "login":
@@ -550,7 +604,7 @@ const Home = () => {
           </div>
         </div>
         {/* ========= INTERNSHIP CALL-TO-ACTION SECTION ========= */}
-        <div id="intenship" className="max-w-5xl mx-auto mt-32 mb-24">
+        <div id="internship" className="max-w-5xl mx-auto mt-32 mb-24">
           <div className="bg-gradient-to-r from-emerald-400 to-cyan-500 rounded-3xl shadow-lg text-center text-white py-20 px-8 relative overflow-hidden">
             {/* Floating Icon */}
             <div className="absolute top-6 left-1/2 -translate-x-1/2 w-14 h-14 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center shadow-md">
@@ -635,7 +689,7 @@ const Home = () => {
               </p>
 
               {/* --- Send Message Form --- */}
-              <form className="space-y-4">
+              <form onSubmit={handleContactSubmit} className="space-y-4">
                 <input
                   type="text"
                   placeholder="Your Name"
@@ -796,60 +850,68 @@ const Home = () => {
               </div>
             </div>
 
-            {/* QUICK LINKS */}
-            <div>
-              <h3 className="font-semibold text-white dark:text-gray-200 mb-4 text-lg">
-                Quick Links
-              </h3>
-              <ul className="space-y-3 text-sm">
-                <li>
-                  <Link className="hover:text-emerald-400 transition">
-                    Home
-                  </Link>
-                </li>
-                <li>
-                  <Link
+         {/* QUICK LINKS */}
+<div>
+  <h3 className="font-semibold text-white dark:text-gray-200 mb-4 text-lg">
+    Quick Links
+  </h3>
 
-                    className="hover:text-emerald-400 transition"
-                  >
-                    Services
-                  </Link>
-                </li>
-                <li>
-                  <Link
+  <ul className="space-y-3 text-sm">
+    <li>
+      <button
+        onClick={() => scrollToSection("home")}
+        className="hover:text-emerald-400 transition cursor-pointer"
+      >
+        Home
+      </button>
+    </li>
 
-                    className="hover:text-emerald-400 transition"
-                  >
-                    Courses
-                  </Link>
-                </li>
-                <li>
-                  <Link
+    <li>
+      <button
+        onClick={() => scrollToSection("services")}
+        className="hover:text-emerald-400 transition cursor-pointer"
+      >
+        Services
+      </button>
+    </li>
 
-                    className="hover:text-emerald-400 transition"
-                  >
-                    About Us
-                  </Link>
-                </li>
-                <li>
-                  <Link
+    <li>
+      <Link
+        to="/courses"
+        className="hover:text-emerald-400 transition"
+      >
+        Courses
+      </Link>
+    </li>
 
-                    className="hover:text-emerald-400 transition"
-                  >
-                    Contact
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    to="/internapplication"
-                    className="hover:text-emerald-400 transition"
-                  >
-                    Apply Internship
-                  </Link>
-                </li>
-              </ul>
-            </div>
+    <li>
+      <Link
+        to="/about"
+        className="hover:text-emerald-400 transition"
+      >
+        About Us
+      </Link>
+    </li>
 
+    <li>
+      <button
+        onClick={() => scrollToSection("contact")}
+        className="hover:text-emerald-400 transition cursor-pointer"
+      >
+        Contact
+      </button>
+    </li>
+
+    <li>
+      <button
+        onClick={() => scrollToSection("internship")}
+        className="hover:text-emerald-400 transition cursor-pointer"
+      >
+        Apply Internship
+      </button>
+    </li>
+  </ul>
+</div>
             {/* CONTACT INFO */}
             <div>
               <h3 className="font-semibold text-white dark:text-gray-200 mb-4 text-lg">

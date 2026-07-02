@@ -11,58 +11,71 @@ export default function ClientDashboard() {
   const [adminId, setAdminId] = useState(null)
   const messagesEndRef = useRef(null)
 
+  const callEdge = async (action, payload) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      throw new Error('Please login again');
+    }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || 'Edge request failed');
+    }
+
+    return result;
+  };
+
   // Fetch Admin ID
   useEffect(() => {
     const fetchAdmin = async () => {
-      console.log('[Chat Debug] Fetching admin from w_users...')
-      const { data, error } = await supabase
-        .from('w_users')
-        .select('id, email, role')
-        .eq('role', 'admin')
-        .limit(1)
-        .maybeSingle()
-
-      console.log('[Chat Debug] Admin fetch result:', { data, error })
-
-      if (data?.id) {
-        console.log('[Chat Debug] Admin ID set to:', data.id, '| email:', data.email)
-        setAdminId(data.id)
-      } else {
-        console.error('[Chat Debug] Admin NOT found in w_users. Error:', error)
-        if (error?.code === 'PGRST116') {
-          console.warn('[Chat Debug] RLS policy may be blocking w_users read. Run chat_setup.sql in Supabase.')
+      try {
+        const result = await callEdge("get_client_chat_admins_and_messages");
+        const adminData = result.adminUser;
+        if (adminData?.id) {
+          setAdminId(adminData.id);
         }
+      } catch (err) {
+        console.error("Error fetching admin from edge function:", err);
       }
     }
     fetchAdmin()
-  }, [])
+  }, [user])
 
   // Fetch Messages & Subscribe
   useEffect(() => {
     if (!user) return
 
     const fetchMessages = async () => {
-      const { data, error } = await supabase
-        .from('w_messages')
-        .select(`
-          *,
-          reply_to_message:reply_to_id (
-            id, content, sender_id, created_at
-          )
-        `)
-        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-        .order('created_at', { ascending: true })
-
-      if (!error && data) {
-        setMessages(data)
-        const unreadIds = data
-          .filter(m => m.receiver_id === user.id && m.status !== 'read')
-          .map(m => m.id)
-        if (unreadIds.length > 0) {
-          await supabase.from('w_messages').update({ status: 'read' }).in('id', unreadIds)
+      try {
+        const result = await callEdge("get_client_chat_admins_and_messages");
+        const data = result.messages;
+        if (data) {
+          setMessages(data)
+          const unreadIds = data
+            .filter(m => m.receiver_id === user.id && m.status !== 'read')
+            .map(m => m.id)
+          if (unreadIds.length > 0) {
+            await callEdge('mark_messages_read', { ids: unreadIds })
+          }
         }
-      } else {
-        console.error('Fetch messages error:', error)
+      } catch (err) {
+        console.error('Fetch messages error:', err)
       }
     }
 
@@ -89,7 +102,7 @@ export default function ClientDashboard() {
               return [...prev, payload.new]
             })
             if (payload.new.receiver_id === user.id) {
-              supabase.from('w_messages').update({ status: 'read' }).eq('id', payload.new.id).then()
+              callEdge('mark_messages_read', { ids: [payload.new.id] }).catch(console.error)
             }
           }
         }
@@ -134,21 +147,55 @@ export default function ClientDashboard() {
 
     // Insert into DB
     console.log('[Chat Debug] Inserting message:', { sender_id: user.id, receiver_id: adminId, content })
-    const { data: sentData, error } = await supabase
-      .from('w_messages')
-      .insert({ sender_id: user.id, receiver_id: adminId, content, reply_to_id: replyToId })
-      .select(`*, reply_to_message:reply_to_id (id, content, sender_id, created_at)`)
-      .single()
+   try {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-    console.log('[Chat Debug] Insert result:', { sentData, error })
+  if (!session) {
+    throw new Error("Please login again");
+  }
 
-    if (sentData) {
-      setMessages(prev => prev.map(m => m.id === tempId ? sentData : m))
-    } else if (error) {
-      console.error('[Chat Debug] Send error full details:', JSON.stringify(error))
-      setMessages(prev => prev.filter(m => m.id !== tempId))
-      alert('Failed to send: ' + error.message + '\n\nCode: ' + error.code + '\n\nCheck browser console for details.')
+  const response = await fetch(
+    `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        action: "send_chat_message",
+        receiver_id: adminId,
+        content,
+        reply_to_id: replyToId,
+      }),
     }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error);
+  }
+
+  const sentData = result.message;
+
+  console.log('[Chat Debug] Insert result:', sentData);
+
+  setMessages(prev =>
+    prev.map(m => m.id === tempId ? sentData : m)
+  );
+
+} catch (error) {
+  console.error(error);
+
+  setMessages(prev =>
+    prev.filter(m => m.id !== tempId)
+  );
+
+  alert(error.message);
+}
   }
 
   const handleSendMessage = async (e, replyToId) => {
@@ -159,6 +206,7 @@ export default function ClientDashboard() {
   }
 
   const handleReaction = async (messageId, emoji) => {
+    try{
     const msg = messages.find(m => m.id === messageId)
     if (!msg) return
     const currentReactions = msg.reactions || {}
@@ -171,7 +219,31 @@ export default function ClientDashboard() {
       newReactions[emoji] = [...userIds, user.id]
     }
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions: newReactions } : m))
-    await supabase.from('w_messages').update({ reactions: newReactions }).eq('id', messageId)
+    const {
+  data: { session },
+} = await supabase.auth.getSession();
+if (!session) {
+  throw new Error("Please login again");
+}
+await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "update_message_reactions",
+      id: messageId,
+      reactions: newReactions,
+    }),
+  }
+);
+  }catch (error) {
+    console.error(error);
+    alert(error.message);
+  }
   }
 
   const handleFileUpload = async (file) => {
@@ -187,20 +259,100 @@ export default function ClientDashboard() {
     else await insertMessage(`[FILE] ${publicUrl}|${file.name}`)
   }
 
-  const handleEditMessage = async (messageId, newContent) => {
-    const { error } = await supabase.from('w_messages')
-      .update({ content: newContent, is_edited: true }).eq('id', messageId)
-    if (error) { alert('Edit failed'); return }
-    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: newContent, is_edited: true } : m))
-  }
+const handleEditMessage = async (messageId, newContent) => {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-  const handleDeleteMessage = async (messageId) => {
-    const { error } = await supabase.from('w_messages')
-      .update({ content: 'This message was deleted', is_deleted: true }).eq('id', messageId)
-    if (error) { alert('Delete failed'); return }
-    setMessages(prev => prev.map(m => m.id === messageId
-      ? { ...m, content: 'This message was deleted', is_deleted: true } : m))
+    if (!session) {
+      throw new Error("Please login again");
+    }
+
+   const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "edit_chat_message",
+      id: messageId,
+      content: newContent,
+    }),
   }
+);
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error);
+    }
+
+    setMessages(prev =>
+      prev.map(m =>
+        m.id === messageId
+          ? { ...m, content: newContent, is_edited: true }
+          : m
+      )
+    );
+  } catch (error) {
+    console.error(error);
+    alert(error.message);
+  }
+};
+
+const handleDeleteMessage = async (messageId) => {
+  try{
+ const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+if (!session) {
+  throw new Error("Please login again");
+}
+
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "delete_chat_message",
+      id: messageId,
+    }),
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.error);
+}
+
+ 
+
+  setMessages(prev =>
+    prev.map(m =>
+      m.id === messageId
+        ? {
+            ...m,
+            content: 'This message was deleted',
+            is_deleted: true
+          }
+        : m
+    )
+  );
+}catch (error) {
+  console.error(error);
+  alert(error.message);
+}
+};
 
   return (
     <div className="client-container" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

@@ -12,35 +12,59 @@ export const AuthModalProvider = ({ children }) => {
   const [activePage, setActivePage] = useState("");
   const [loginbool, setLoginbool] = useState(true);
 
+  const callEdge = async (action, payload = {}) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("No active session token");
+    }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || "Edge request failed");
+    }
+
+    return result;
+  };
+
   // 🔹 Ensure profile exists
   const ensureProfile = async (authUser) => {
     const googleName =
       authUser.user_metadata?.full_name || authUser.user_metadata?.name || null;
 
-    const { data: existingUser } = await supabase
-      .from("w_users")
-      .select("id, name")
-      .eq("id", authUser.id)
-      .single();
+    try {
+      const result = await callEdge("get_user");
+      const existingUser = result.user;
 
-    // Create profile
-    if (!existingUser) {
-      await supabase.from("w_users").insert({
-        id: authUser.id,
-        email: authUser.email,
-        name: googleName || "User",
-        role: "client",
-        user_verify: true,
-      });
-      return;
-    }
+      // Create profile
+      if (!existingUser) {
+        await callEdge("create_user", {
+          name: googleName || "User",
+        });
+        return;
+      }
 
-    // Update name if missing or default
-    if (googleName && (!existingUser.name || existingUser.name === "User")) {
-      await supabase
-        .from("w_users")
-        .update({ name: googleName })
-        .eq("id", authUser.id);
+      // Update name if missing or default
+      if (googleName && (!existingUser.name || existingUser.name === "User")) {
+        await callEdge("update_user", {
+          name: googleName,
+        });
+      }
+    } catch (err) {
+      console.error("Error in ensureProfile:", err);
     }
   };
 
@@ -95,11 +119,13 @@ export const AuthModalProvider = ({ children }) => {
       setUser(authUser);
       await ensureProfile(authUser);
 
-      const { data: profileData, error: profileError } = await supabase
-        .from("w_users")
-        .select("*")
-        .eq("id", authUser.id)
-        .single();
+      let profileData = null;
+      try {
+        const result = await callEdge("get_user");
+        profileData = result.user;
+      } catch (err) {
+        console.error("Error getting profile:", err);
+      }
 
 
 
@@ -132,14 +158,12 @@ export const AuthModalProvider = ({ children }) => {
         const authUser = session.user;
         setUser(authUser);
 
-        supabase
-          .from("w_users")
-          .select("*")
-          .eq("id", authUser.id)
-          .single()
-          .then(({ data, error }) => {
-
-            setProfile(data || null);
+        callEdge("get_user")
+          .then((result) => {
+            setProfile(result.user || null);
+          })
+          .catch((err) => {
+            console.error("Error fetching user profile:", err);
           });
       }
     });
@@ -224,12 +248,16 @@ export const AuthModalProvider = ({ children }) => {
     setRecoveryMode(false);
   };
 
+  const isAdmin = loading ? null : (profile?.role === "admin");
+
   return (
     <AuthModalContext.Provider
       value={{
         user,
         profile,
+        isAdmin,
         loading,
+        loadingUser: loading,
         loginbool,
         recoveryMode,
         activePage,

@@ -8,10 +8,12 @@ export const supabase = createClient(
   supabaseAnonKey,
   {
     auth: {
-      persistSession: true,   // 🔑 REQUIRED
+      persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      storage: window.localStorage, // 🔑 REQUIRED
+      storage: window.localStorage,
+      // Custom no-op lock to prevent Web Lock deadlocks in React 18 / development environments
+      lock: (name, acquireTimeout, fn) => fn(),
     },
   }
 );

@@ -22,7 +22,6 @@ import {
   FileText,
   ExternalLink,
 } from "lucide-react";
-import axios from "axios";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import { useAuthModal } from "../context/AuthModalContext";
@@ -32,16 +31,44 @@ export default function ApplyInternship() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const { user, loadingUser, profile } = useAuthModal();
+const { user, loadingUser } = useAuthModal();
   const navigate = useNavigate();
 
   const [hasApplied, setHasApplied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [internId, setInternId] = useState(null);
   const [existingCvUrl, setExistingCvUrl] = useState("");
+  const [currentStatus, setCurrentStatus] = useState("");
   const [fetchingExisting, setFetchingExisting] = useState(true);
 
-  const BASE_URL = process.env.REACT_APP_API_URL;
+  const callEdge = async (action, payload = {}) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("No active session token");
+    }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || "Edge request failed");
+    }
+
+    return result;
+  };
+
 
   // Days for the dropdown
   const weekDays = [
@@ -94,26 +121,20 @@ export default function ApplyInternship() {
 
   useEffect(() => {
     const checkExistingApplication = async () => {
-      const currentUserId = user?.id || profile?.id;
+      const currentUserId = user?.id;
       if (!currentUserId) {
         setFetchingExisting(false);
         return;
       }
       try {
-        const { data, error } = await supabase
-          .from("internship_applications")
-          .select("*")
-          .eq("user_id", currentUserId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const result = await callEdge("get_my_intern_application");
+        const data = result.application;
 
-        if (error) {
-          console.error("Error fetching existing application:", JSON.stringify(error, null, 2));
-        } else if (data) {
+        if (data) {
           setHasApplied(true);
           setInternId(data.id);
           setExistingCvUrl(data.cv_url);
+          setCurrentStatus(data.current_status || "");
           setForm({
             full_name: data.full_name || "",
             phone_number: data.phone_number || "",
@@ -154,7 +175,7 @@ export default function ApplyInternship() {
     if (!loadingUser) {
       checkExistingApplication();
     }
-  }, [user, profile, loadingUser]);
+ }, [user, loadingUser]); 
 
   const handleChange = (e) => {
     const { name, value, type, checked, files } = e.target;
@@ -267,6 +288,117 @@ export default function ApplyInternship() {
       toast.error("Please upload your CV");
       return;
     }
+    // Required fields
+if (!form.full_name.trim()) {
+  toast.error("Full Name is required");
+  return;
+}
+
+if (!form.phone_number.trim()) {
+  toast.error("Phone Number is required");
+  return;
+}
+
+if (!/^\d{10}$/.test(form.phone_number.replace(/\D/g, ""))) {
+  toast.error("Enter a valid 10 digit phone number");
+  return;
+}
+
+if (!form.email.trim()) {
+  toast.error("Email is required");
+  return;
+}
+
+if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+  toast.error("Enter a valid email address");
+  return;
+}
+
+if (!form.program_type) {
+  toast.error("Please select Program Type");
+  return;
+}
+
+if (!form.top_priority_role) {
+  toast.error("Please select a Top Priority Role");
+  return;
+}
+
+if (!form.availability) {
+  toast.error("Please select Availability");
+  return;
+}
+
+if (!form.available_to_join) {
+  toast.error("Please select when you can join");
+  return;
+}
+
+if (!form.Interview_date) {
+  toast.error("Please select a preferred interview date");
+  return;
+}
+const selectedDate = new Date(form.Interview_date);
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+
+if (selectedDate < today) {
+  toast.error("Interview date cannot be in the past");
+  return;
+}
+// Graduation year validation
+if (
+  form.graduation_year &&
+  !/^\d{4}$/.test(form.graduation_year)
+) {
+  toast.error("Graduation year must be 4 digits");
+  return;
+}
+
+// LinkedIn validation
+if (
+  form.linkedin_profile &&
+  !form.linkedin_profile.startsWith("http")
+) {
+  toast.error("LinkedIn URL must start with http:// or https://");
+  return;
+}
+
+// Portfolio validation
+if (
+  form.portfolio_url &&
+  !form.portfolio_url.startsWith("http")
+) {
+  toast.error("Portfolio URL must start with http:// or https://");
+  return;
+}
+
+// GitHub validation
+if (
+  form.github_url &&
+  !form.github_url.startsWith("http")
+) {
+  toast.error("GitHub URL must start with http:// or https://");
+  return;
+}
+
+// Work experience description required
+if (
+  form.is_working_professional &&
+  !form.work_experience_desc.trim()
+) {
+  toast.error("Please describe your work experience");
+  return;
+}
+
+// Internship description required
+if (
+  form.has_internship_exp &&
+  !form.internship_exp_desc.trim()
+) {
+  toast.error("Please describe your internship experience");
+  return;
+}
 
     setLoading(true);
 
@@ -280,13 +412,18 @@ export default function ApplyInternship() {
         setLoading(false);
         return; // ⛔ STOP SUBMISSION
       }
-      const cvUrl = form.cv ? await handlePdfUpload(form.cv, profile.id) : existingCvUrl;
-
+      const cvUrl = form.cv
+  ? await handlePdfUpload(form.cv, user.id)
+  : existingCvUrl;
+      if (!cvUrl) {
+  setLoading(false);
+  return;
+}
       const applicationData = {
         user_id: user.id,
-        full_name: form.full_name,
-        phone_number: form.phone_number,
-        email: form.email,
+      full_name: form.full_name.trim(),
+email: form.email.trim(),
+phone_number: form.phone_number.trim(),
 
         linkedin_profile: form.linkedin_profile,
         portfolio_url: form.portfolio_url,
@@ -319,21 +456,35 @@ export default function ApplyInternship() {
         interview_date: form.Interview_date,
         available_to_join: form.available_to_join,
 
-        cv_url: cvUrl,
-        updated_by: user.id,
-        status_updated_by: user.id,
-        status_updated_role: "user",
-        status_updated_at: new Date().toISOString(),
-        update_source: "USER_APPLICATION"
+        cv_url: cvUrl
       };
 
       if (isEditing) {
-        const { error } = await supabase
-          .from("internship_applications")
-          .update(applicationData)
-          .eq("id", internId);
+      const {
+  data: { session },
+} = await supabase.auth.getSession();
 
-        if (error) throw error;
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "update_internship_application",
+      id: internId,
+      ...applicationData,
+    }),
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.error);
+}
         toast.success("Application updated successfully!");
         setIsEditing(false); // Switch back to applied view
       } else {
@@ -341,11 +492,30 @@ export default function ApplyInternship() {
         applicationData.current_sub_status = "Application Received";
         applicationData.created_at = new Date().toISOString();
 
-        const { error } = await supabase
-          .from("internship_applications")
-          .insert([applicationData]);
+        const {
+  data: { session },
+} = await supabase.auth.getSession();
 
-        if (error) throw error;
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "create_internship_application",
+      ...applicationData,
+    }),
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.error);
+}
         toast.success("Application submitted successfully!");
         setHasApplied(true); // Switch to applied view
       }
@@ -436,16 +606,22 @@ export default function ApplyInternship() {
                 <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
                   Your internship application is currently under review. Need to update your application details?
                 </p>
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <button
-                    onClick={() => {
-                      setSubmitted(false);
-                      setIsEditing(true);
-                    }}
-                    className="px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium hover:shadow-lg hover:shadow-emerald-500/25 transition-all"
-                  >
-                    Edit Application
-                  </button>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                  {!["Selected", "Pre-boarding / Selected", "Pre-boarding Completed", "Onboarded", "Internship"].includes(currentStatus) ? (
+                    <button
+                      onClick={() => {
+                        setSubmitted(false);
+                        setIsEditing(true);
+                      }}
+                      className="px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium hover:shadow-lg hover:shadow-emerald-500/25 transition-all"
+                    >
+                      Edit Application
+                    </button>
+                  ) : (
+                    <span className="px-6 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 font-semibold border border-amber-200 dark:border-amber-900/30 text-sm">
+                      ⚠️ Editing is disabled as you have been selected.
+                    </span>
+                  )}
                   <button
                     onClick={() => navigate("/mypage")}
                     className="px-8 py-3 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-[#111a2e] transition-colors"

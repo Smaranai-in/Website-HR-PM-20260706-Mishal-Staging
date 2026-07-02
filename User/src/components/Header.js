@@ -3,8 +3,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Moon, Sun, Menu, X, Sparkles, Monitor, LogOut } from "lucide-react";
 import { useAuthModal } from "../context/AuthModalContext";
 import { toast } from "react-toastify";
-import axios from "axios";
-import { supabase } from "../supabaseClient";
 
 const Header = () => {
   const [darkMode, setDarkMode] = useState(false);
@@ -13,16 +11,14 @@ const Header = () => {
   const navigate = useNavigate();
   const { setActivePage, profile, logout, loginbool } = useAuthModal();
 
-
   // 🌟 PAGES CONFIG
   const pages = [
     { name: "Home", type: "scroll", targetId: "home" },
     { name: "Services", type: "scroll", targetId: "services" },
     { name: "Courses", type: "page", path: "/courses" },
     { name: "About", type: "page", path: "/about" },
-    { name: "My Page", type: "page", path: "/mypage" },
+    { name: "My Page", type: "page", path: "/mypage", requiresAuth: true },
     { name: "Contact", type: "scroll", targetId: "contact" },
-    { name: "Internship", type: "scroll", targetId: "intenship" },
   ];
 
   // 🌗 Load theme
@@ -80,9 +76,10 @@ const Header = () => {
       toast.success("Logged out successfully!");
       navigate("/", { replace: true });
     } catch (error) {
-      toast.error("Logout failed");
     }
   };
+
+  if (location.pathname.startsWith("/dashboard")) return null;
 
   return (
     <>
@@ -116,7 +113,7 @@ const Header = () => {
                 <button
                   key={page.name}
                   onClick={() => {
-                    if (page.name === "Courses" && !profile) {
+                    if ((page.name === "Courses" || page.requiresAuth) && !profile) {
                       setActivePage("login");
                       return;
                     }
@@ -228,13 +225,17 @@ const Header = () => {
                 <button
                   key={page.name}
                   onClick={() => {
-                    if (page.name === "Courses" && !profile) {
+                    if ((page.name === "Courses" || page.requiresAuth) && !profile) {
                       setActivePage("login");
                       setMobileOpen(false);
                       return;
                     }
-                    if (page.type === "page") navigate(page.path);
-                    else scrollToSection(page.targetId);
+                   if (page.type === "page") {
+  setMobileOpen(false);
+  navigate(page.path);
+} else {
+  scrollToSection(page.targetId);
+}
                   }}
                   className="flex items-center justify-between px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
                 >

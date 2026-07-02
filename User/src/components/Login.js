@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import axios from "axios";
 import { toast } from "react-toastify";
+import { useNavigate, useLocation } from "react-router-dom";
 import { 
   FaEye, 
   FaEyeSlash, 
@@ -19,6 +19,8 @@ function Login({ onClose, onSignup, onForgot }) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false); // Added Loading State
   const { login, loginWithGoogle } = useAuthModal();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const handlelogin = async () => {
     if (!email || !password) {
@@ -26,20 +28,23 @@ function Login({ onClose, onSignup, onForgot }) {
       return;
     }
 
-    setLoading(true); // Start Loading
+    setLoading(true);
 
     try {
       await login(email, password);
-      toast.success("Login successfull ");
-      setLoading(false); // Stop Loading on success
-      
+      toast.success("Login successful!");
+      setLoading(false);
+
+      // Redirect to originally intended page, or home
+      const from = location.state?.from?.pathname || "/";
       setTimeout(() => {
         onClose();
-      }, 800);
-      
+        if (from !== "/") navigate(from, { replace: true });
+      }, 600);
+
     } catch (error) {
-      toast.error("error occur at login", error);
-      setLoading(false); // Stop Loading on error
+      toast.error(error.message || "Login failed. Please try again.");
+      setLoading(false);
     }
   };
 

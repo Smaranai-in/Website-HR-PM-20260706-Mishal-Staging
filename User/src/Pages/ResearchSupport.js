@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { toast } from "react-toastify";
 import {
   MessageCircle,
@@ -27,7 +26,6 @@ const ResearchSupport = () => {
   const bgImage = process.env.PUBLIC_URL + "/research.jpg";
 
   const [form, setForm] = useState({
-    user_id: "",
     full_name: "",
     phone: "",
     email: "",
@@ -47,8 +45,6 @@ const ResearchSupport = () => {
   const { user, loadingUser } = useAuthModal();
   const navigate = useNavigate();
 
-  const BASE_URL = process.env.REACT_APP_API_URL;
-
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
@@ -64,35 +60,7 @@ const ResearchSupport = () => {
     if (!loadingUser && !user) navigate("/");
   }, [user, loadingUser]);
 
-  const submitFormDetails = async (documentUrl = null) => {
-    const { data, error } = await supabase
-      .from("w_research_enrollments")
-      .insert([
-        {
-          user_id: user.id, // ✅ MUST be auth user id
-          full_name: form.full_name,
-          phone: form.phone,
-          email: form.email,
-          country: form.country,
-          state: form.state,
-          city: form.city,
-          college: form.college,
-          grad_year: form.grad_year,
-          role: form.role,
-          topic: form.topic,
-          stage: form.stage,
-          description: form.description,
-          support_needed: form.support_needed,
-          document_url: documentUrl,
-          status: "pending",
-        },
-      ])
-      .select("id")
-      .single();
 
-    if (error) throw error;
-    return data.id;
-  };
 
   useEffect(() => window.scrollTo(0, 0), []);
 
@@ -128,12 +96,18 @@ const ResearchSupport = () => {
   };
 
   const validateForm = () => {
-    if (!form.full_name) return "Full name is required";
-    if (!form.phone) return "Phone number is required";
-    if (!form.email) return "Email is required";
-    if (!form.topic) return "Research topic is required";
+    if (!form.role) return "Please select your role";
+    if (!form.full_name.trim())
+  return "Full name is required";
+    if (!/^\d{10}$/.test(form.phone.replace(/\D/g, "")))
+  return "Enter a valid 10 digit phone number";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
+  return "Enter a valid email";
+    if (!form.topic.trim())
+  return "Research topic is required";
     if (!form.stage) return "Research stage is required";
-    if (!form.description) return "Description is required";
+    if (!form.description.trim())
+  return "Description is required";
     if (!form.support_needed) return "Support needed is required";
     return null;
   };
@@ -153,10 +127,56 @@ const ResearchSupport = () => {
 
     try {
       // 1️⃣ Upload document
-      const documentUrl = await uploadDocumentUsingID();
+      // 1️⃣ Upload document
+const documentUrl = await uploadDocumentUsingID();
 
-      // 2️⃣ Insert DB data
-      await submitFormDetails(documentUrl);
+const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+if (!session) {
+  throw new Error("Please login again");
+}
+const response = await fetch(
+  `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      action: "create_research_enrollment",
+
+      full_name: form.full_name.trim(),
+      phone: form.phone,
+      email: form.email.trim(),
+
+      country: form.country,
+      state: form.state,
+      city: form.city,
+
+      college: form.college,
+      grad_year: form.grad_year,
+
+      role: form.role,
+      topic: form.topic.trim(),
+      stage: form.stage,
+
+      description: form.description.trim(),
+      support_needed: form.support_needed,
+
+      document_url: documentUrl,
+      status: "pending",
+    }),
+  }
+);
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.error);
+}
 
       toast.success("Enrollment submitted successfully 🎉");
 

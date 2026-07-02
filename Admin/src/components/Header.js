@@ -15,7 +15,13 @@ const Header = () => {
 
 
   // 🌟 PAGES CONFIG
-  const pages = [];
+  const pages = [
+    { path: "/", label: "Dashboard", icon: null },
+    { path: "/internapplicationList", label: "Applicants", icon: null },
+    { path: "/admin-leaves", label: "Leaves", icon: null },
+    { path: "/ai-interviews", label: "AI Interviews", icon: null },
+    { path: "/projects", label: "Projects", icon: null },
+  ];
 
   // 🌗 Load theme
   useEffect(() => {

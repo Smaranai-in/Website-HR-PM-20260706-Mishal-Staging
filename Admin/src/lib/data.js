@@ -1,5 +1,32 @@
-
 import { supabase } from "../supabaseClient";
+
+const callEdge = async (action, payload = {}) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+        throw new Error("No active session token");
+    }
+
+    const response = await fetch(
+        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ action, ...payload }),
+        }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+        throw new Error(result?.error || "Edge request failed");
+    }
+
+    return result;
+};
 
 // Helper to map DB task to frontend Task
 function mapTaskFromDb(t) {
@@ -19,158 +46,117 @@ function mapTaskFromDb(t) {
     };
 }
 
-export async function getProjects() {
-    if (!supabase) return [];
+// ─────────────────────────────────────────────────────────────────────────────
+// CORE FETCH: All four tables in PARALLEL — only ever called ONCE per page load
+// ─────────────────────────────────────────────────────────────────────────────
+export async function fetchAllProjectData() {
+    if (!supabase) return { projects: [], tasks: [], projDevs: [], allDevs: [] };
 
     try {
-        console.log("Fetching projects (manual join)...");
-        // 1. Fetch all projects
-        const { data: projects, error: pError } = await supabase.from("p_projects").select("*");
-        if (pError) throw pError;
-
-        if (!projects || projects.length === 0) return [];
-
-        // 2. Fetch all tasks
-        const { data: tasks, error: tError } = await supabase.from("p_tasks").select("*");
-        if (tError) console.error("Error fetching tasks:", tError);
-
-        // 3. Fetch project_developers pivot
-        const { data: projDevs, error: pdError } = await supabase.from("p_project_developers").select("*");
-        if (pdError) console.error("Error fetching project_developers:", pdError);
-
-        // 4. Fetch all developers
-        const { data: allDevs, error: dError } = await supabase.from("p_developers").select("*");
-        if (dError) console.error("Error fetching developers:", dError);
-
-        // Map data
-        const developersMap = new Map((allDevs || []).map(d => [d.id, d]));
-
-        return projects.map((p) => {
-            // Filter tasks for this project
-            const projectTasks = (tasks || []).filter(t => t.project_id === p.id);
-
-            // Filter developers for this project
-            const projectDevIds = (projDevs || [])
-                .filter(pd => pd.project_id === p.id)
-                .map(pd => pd.developer_id);
-
-            const team = projectDevIds
-                .map(devId => developersMap.get(devId))
-                .filter(Boolean)
-                .map(d => ({
-                    ...d,
-                    role: "Developer",
-                    avatarColor: "bg-gray-500",
-                    employeeId: "N/A"
-                }));
-
-            return {
-                ...p,
-                startDate: p.start_date || p.startDate,
-                deadline: p.deadline,
-                status: ["on_track", "at_risk", "off_track"].includes(p.status) ? p.status : "on_track",
-                team: team,
-                tasks: projectTasks.map(mapTaskFromDb)
-            };
-        });
-
+        const res = await callEdge("get_all_project_data");
+        return {
+            projects: res.projects || [],
+            tasks: res.tasks || [],
+            projDevs: res.projDevs || [],
+            allDevs: res.allDevs || [],
+        };
     } catch (err) {
-        console.error("Supabase projects fetch failed:", err);
+        console.error("fetchAllProjectData failed:", err);
+        return { projects: [], tasks: [], projDevs: [], allDevs: [] };
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUILD: Assembles project objects from pre-fetched raw data (no extra DB hits)
+// ─────────────────────────────────────────────────────────────────────────────
+function buildProjects({ projects, tasks, projDevs, allDevs }) {
+    // Map developers using user_id instead of id if available, fallback to id
+    const developersMap = new Map((allDevs || []).map(d => [d.user_id || d.id, d]));
+
+    return projects.map((p) => {
+        const projectTasks = (tasks || []).filter(t => t.project_id === p.id);
+
+        const projectDevIds = (projDevs || [])
+            .filter(pd => pd.project_id === p.id)
+            .map(pd => pd.developer_id);
+
+        const team = projectDevIds
+            .map(devId => developersMap.get(devId))
+            .filter(Boolean)
+            .map(d => ({
+                ...d,
+                id: d.user_id || d.id, // Ensure id points to user_id for assignment
+                name: d.full_name || d.name || "Unknown Intern",
+                role: d.top_priority_role || d.role || "Intern",
+                avatarColor: d.avatar_color || "bg-indigo-500",
+                employeeId: d.employee_id || d.employeeId || "—"
+            }));
+
+        return {
+            ...p,
+            startDate: p.start_date || p.startDate,
+            deadline: p.deadline,
+            status: ["on_track", "at_risk", "off_track"].includes(p.status) ? p.status : "on_track",
+            team,
+            tasks: projectTasks.map(mapTaskFromDb)
+        };
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUBLIC API — these now accept pre-fetched data (rawData) to avoid re-fetching
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Sync version — use when rawData is already in memory (no extra DB calls)
+export function getProjects(rawData) {
+    return buildProjects(rawData);
+}
+
+// Async standalone version — fetches fresh data
+export async function fetchProjects() {
+    const data = await fetchAllProjectData();
+    return buildProjects(data);
+}
+
+// Sync version — use when rawData is already in memory
+export function getDevelopers(rawData) {
+    return (rawData?.allDevs || []).map(d => ({
+        ...d,
+        id: d.user_id || d.id,
+        name: d.full_name || d.name || "Unknown Intern",
+        role: d.top_priority_role || d.role || "Intern",
+        avatarColor: d.avatar_color || "bg-indigo-500",
+        employeeId: d.employee_id || d.employeeId || "—"
+    }));
+}
+
+// Async standalone version — fetches fresh data
+export async function fetchDevelopers() {
+    if (!supabase) return [];
+    try {
+        const res = await callEdge("get_developers");
+        return (res.data || []).map(d => ({
+            ...d,
+            id: d.user_id || d.id, // Map user_id to id for tasks and projects
+            name: d.full_name || d.name || "Unknown Intern",
+            role: d.top_priority_role || d.role || "Intern",
+            avatarColor: d.avatar_color || "bg-indigo-500",
+            employeeId: d.employee_id || d.employeeId || "—"
+        }));
+    } catch (err) {
+        console.error("Supabase intern fetch failed:", err);
         return [];
     }
 }
 
-export async function getProjectById(id) {
-    if (!supabase) return undefined;
-
-    try {
-        // 1. Fetch project
-        const { data: project, error: pError } = await supabase
-            .from("p_projects")
-            .select("*")
-            .eq("id", id)
-            .maybeSingle();
-
-        if (pError) throw pError;
-        if (!project) return undefined;
-
-        // 2. Fetch tasks for this project
-        const { data: tasks, error: tError } = await supabase
-            .from("p_tasks")
-            .select("*")
-            .eq("project_id", id);
-
-        // 3. Fetch project developers
-        const { data: projDevs, error: pdError } = await supabase
-            .from("p_project_developers")
-            .select("*")
-            .eq("project_id", id);
-
-        // 4. Fetch relevant developers
-        let team = [];
-        if (projDevs && projDevs.length > 0) {
-            const devIds = projDevs.map(pd => pd.developer_id);
-            const { data: devs } = await supabase
-                .from("p_developers")
-                .select("*")
-                .in("id", devIds);
-
-            team = (devs || []).map(d => ({
-                ...d,
-                role: "Developer",
-                avatarColor: "bg-gray-500",
-                employeeId: "N/A"
-            }));
-        }
-
-        return {
-            ...project,
-            startDate: project.start_date || project.startDate,
-            deadline: project.deadline,
-            status: project.status || "on_track",
-            team: team,
-            tasks: (tasks || []).map(mapTaskFromDb)
-        };
-
-    } catch (err) {
-        console.error("Supabase getProjectById failed:", err);
-        return undefined;
-    }
-}
-
-export async function getSummaryStats() {
-    const realProjects = await getProjects();
-    const allTasks = realProjects.flatMap((p) => p.tasks || []);
-    const completedTasks = allTasks.filter((t) => t.status === "done").length;
-    const activeTasks = allTasks.filter((t) => t.status !== "done").length;
-
+// Derived stats — all computed from pre-fetched projects (zero extra DB calls)
+export function getSummaryStats(projects) {
+    const allTasks = projects.flatMap(p => p.tasks || []);
     return {
-        totalProjects: realProjects.length,
-        activeTasks,
-        completedTasks
+        totalProjects: projects.length,
+        activeTasks: allTasks.filter(t => t.status !== "done").length,
+        completedTasks: allTasks.filter(t => t.status === "done").length,
     };
-}
-
-export async function getDevelopers() {
-    if (!supabase) return [];
-
-    try {
-        const { data, error } = await supabase.from("p_developers").select("*");
-        if (error) {
-            console.error("Supabase developers fetch error:", error);
-            return [];
-        }
-        if (data) return data.map((d) => ({
-            ...d,
-            role: "Developer",
-            avatarColor: "bg-gray-500",
-            employeeId: "N/A"
-        }));
-    } catch (err) {
-        console.error("Supabase developers fetch failed:", err);
-    }
-
-    return [];
 }
 
 function formatDateISO(date) {
@@ -178,7 +164,7 @@ function formatDateISO(date) {
     return d.toISOString();
 }
 
-export async function getTaskCountsByDay(days = 14) {
+export function getTaskCountsByDay(projects, days = 14) {
     const end = new Date();
     const start = new Date(end);
     start.setDate(end.getDate() - (days - 1));
@@ -190,8 +176,7 @@ export async function getTaskCountsByDay(days = 14) {
         map.set(formatDateISO(d), 0);
     }
 
-    const realProjects = await getProjects();
-    const allTasks = realProjects.flatMap((p) => p.tasks);
+    const allTasks = projects.flatMap(p => p.tasks);
     for (const t of allTasks) {
         if (t.createdAt) {
             const key = formatDateISO(new Date(t.createdAt));
@@ -202,7 +187,7 @@ export async function getTaskCountsByDay(days = 14) {
     return Array.from(map.entries()).map(([date, count]) => ({ date, count }));
 }
 
-export async function getCompletedTasksByDay(days = 14) {
+export function getCompletedTasksByDay(projects, days = 14) {
     const end = new Date();
     const start = new Date(end);
     start.setDate(end.getDate() - (days - 1));
@@ -214,8 +199,7 @@ export async function getCompletedTasksByDay(days = 14) {
         map.set(formatDateISO(d), 0);
     }
 
-    const realProjects = await getProjects();
-    const allTasks = realProjects.flatMap((p) => p.tasks);
+    const allTasks = projects.flatMap(p => p.tasks);
     for (const t of allTasks) {
         if (t.completedAt) {
             const key = formatDateISO(new Date(t.completedAt));
@@ -226,17 +210,11 @@ export async function getCompletedTasksByDay(days = 14) {
     return Array.from(map.entries()).map(([date, count]) => ({ date, count }));
 }
 
-
-export async function getDevelopersProgress() {
-    const [allProjects, allDevelopers] = await Promise.all([
-        getProjects(),
-        getDevelopers()
-    ]);
-
-    const allTasks = allProjects.flatMap((p) => p.tasks);
+export function getDevelopersProgress(projects, developers) {
+    const allTasks = projects.flatMap(p => p.tasks);
     const byDev = new Map();
 
-    for (const d of allDevelopers) {
+    for (const d of developers) {
         byDev.set(d.id, { name: d.name, employeeId: d.employeeId, total: 0, completed: 0 });
     }
 
@@ -244,7 +222,6 @@ export async function getDevelopersProgress() {
         if (!t.assigneeId) continue;
         const entry = byDev.get(t.assigneeId);
         if (!entry) continue;
-
         entry.total++;
         if (t.status === "done" || t.completedAt) entry.completed++;
     }
@@ -254,22 +231,14 @@ export async function getDevelopersProgress() {
         const progress = v.total === 0 ? 0 : Math.round((v.completed / v.total) * 100);
         result.push({ developerId: id, developerName: v.name, employeeId: v.employeeId, total: v.total, completed: v.completed, progress });
     }
-
     return result;
 }
 
-export async function getTasksByDeveloper() {
-    const [allProjects, allDevelopers] = await Promise.all([
-        getProjects(),
-        getDevelopers()
-    ]);
-
+export function getTasksByDeveloper(projects, developers) {
     const result = {};
-    for (const d of allDevelopers) {
-        result[d.id] = [];
-    }
+    for (const d of developers) result[d.id] = [];
 
-    for (const p of allProjects) {
+    for (const p of projects) {
         for (const t of p.tasks) {
             if (t.assigneeId) {
                 if (!result[t.assigneeId]) result[t.assigneeId] = [];
@@ -277,12 +246,49 @@ export async function getTasksByDeveloper() {
             }
         }
     }
-
     return result;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET PROJECT BY ID — tasks and developers fetched in PARALLEL
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getProjectById(id) {
+    if (!supabase) return undefined;
 
-export async function getDeveloperDailyStats(developerId, days = 14) {
+    try {
+        const res = await callEdge("get_project_by_id", { id });
+        if (!res.project) return undefined;
+
+        const project = res.project;
+        const tasks = res.tasks || [];
+        const projDevs = res.projDevs || [];
+
+        let team = [];
+        if (projDevs && projDevs.length > 0) {
+            const devIds = projDevs.map(pd => pd.developer_id);
+            const allDevs = await fetchDevelopers();
+            team = allDevs.filter(d => devIds.includes(d.id));
+        }
+
+        return {
+            ...project,
+            startDate: project.start_date || project.startDate,
+            deadline: project.deadline,
+            status: project.status || "on_track",
+            team,
+            tasks: tasks.map(mapTaskFromDb)
+        };
+
+    } catch (err) {
+        console.error("Supabase getProjectById failed:", err);
+        return undefined;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEVELOPER DAILY STATS — single call, uses getProjectById data if available
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getDeveloperDailyStats(developerId, days = 14, projects = null) {
     const end = new Date();
     const start = new Date(end);
     start.setDate(end.getDate() - (days - 1));
@@ -294,8 +300,13 @@ export async function getDeveloperDailyStats(developerId, days = 14) {
         map.set(formatDateISO(d), 0);
     }
 
-    const realProjects = await getProjects();
-    const allTasks = realProjects.flatMap((p) => p.tasks);
+    let allProjects = projects;
+    if (!allProjects) {
+        const raw = await fetchAllProjectData();
+        allProjects = buildProjects(raw);
+    }
+
+    const allTasks = allProjects.flatMap(p => p.tasks);
     for (const t of allTasks) {
         if (t.assigneeId === developerId && t.completedAt) {
             const key = formatDateISO(new Date(t.completedAt));

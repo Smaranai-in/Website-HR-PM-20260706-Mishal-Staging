@@ -15,68 +15,45 @@ export default function AdminDashboard() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(true)
     const navigate = useNavigate()
 
+    const callEdge = async (action, payload = {}) => {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError || !session?.access_token) {
+            throw new Error("No active session token");
+        }
+
+        const response = await fetch(
+            `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify({ action, ...payload }),
+            }
+        );
+
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok || result?.error) {
+            throw new Error(result?.error || "Edge request failed");
+        }
+
+        return result;
+    };
+
     // Fetch unique CLIENT users who have sent messages to ANY admin
     useEffect(() => {
         const fetchChatUsers = async () => {
-            // Step 1: Get all admin IDs from w_users
-            const { data: admins, error: adminErr } = await supabase
-                .from('w_users')
-                .select('id')
-                .eq('role', 'admin');
-
-            if (adminErr) {
-                console.error('Error fetching admin list:', adminErr);
+            try {
+                const res = await callEdge("get_admin_chat_users");
+                setInterns(res.interns || []);
+            } catch (err) {
+                console.error("Error fetching clients:", err);
+            } finally {
                 setLoading(false);
-                return;
             }
-
-            const adminIds = (admins || []).map(a => a.id);
-            if (adminIds.length === 0) {
-                setInterns([]);
-                setLoading(false);
-                return;
-            }
-
-            // Step 2: Fetch all messages sent TO any admin (client -> admin)
-            const { data: messages, error: msgError } = await supabase
-                .from('w_messages')
-                .select('sender_id, receiver_id')
-                .in('receiver_id', adminIds);
-
-            if (msgError) {
-                console.error('Error fetching chat messages:', msgError);
-                setLoading(false);
-                return;
-            }
-
-            // Collect unique client (non-admin) sender IDs
-            const clientIds = new Set();
-            messages?.forEach(m => {
-                if (!adminIds.includes(m.sender_id)) {
-                    clientIds.add(m.sender_id);
-                }
-            });
-
-            const uniqueClientIds = Array.from(clientIds);
-
-            if (uniqueClientIds.length === 0) {
-                setInterns([]);
-                setLoading(false);
-                return;
-            }
-
-            // Step 3: Fetch those client profiles
-            const { data, error } = await supabase
-                .from('w_users')
-                .select('*')
-                .in('id', uniqueClientIds);
-
-            if (error) {
-                console.error('Error fetching clients:', error);
-            } else {
-                setInterns(data || []);
-            }
-            setLoading(false);
         }
 
         if (user) {

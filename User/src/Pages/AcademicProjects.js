@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { toast } from "react-toastify";
 import {
   MessageCircle, User, Phone, Mail, Globe, MapPin,
@@ -28,27 +27,59 @@ const AcademicProjects = () => {
     grad_year: "",
   });
 
-  const { user, loadingUser, profile } = useAuthModal();
+const { user, loadingUser } = useAuthModal();
   const navigate = useNavigate();
-
-  const BASE_URL = process.env.REACT_APP_API_URL;
 
   useEffect(() => window.scrollTo(0, 0), []);
 
   useEffect(() => {
     if (!loadingUser && !user) navigate("/");
-  }, [user, loadingUser]);
+  }, [user, loadingUser, navigate]);
 
   const [loading, setLoading] = useState(false);
+
+  const callEdge = async (action, payload = {}) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("No active session token");
+    }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || "Edge request failed");
+    }
+
+    return result;
+  };
 
   // Handle input changes
   const handleChange = (e) => {
     const { name, value, type, files } = e.target;
 
     if (type === "file") {
-      setForm({ ...form, document: files[0] });
+      setForm((prev) => ({
+        ...prev,
+        document: files[0],
+      }));
     } else {
-      setForm({ ...form, [name]: value });
+      setForm((prev) => ({
+        ...prev,
+        [name]: value,
+      }));
     }
   };
 
@@ -56,35 +87,26 @@ const AcademicProjects = () => {
   // 1️⃣ Submit form details
   // ------------------------------
   const submitProjectDetails = async (documentUrl) => {
-    console.log("project details");
+    const result = await callEdge("create_academic_project", {
+      full_name: form.full_name,
+      phone: form.phone,
+      email: form.email,
+      project_domain: form.project_domain,
+      project_title: form.project_title,
+      description: form.description,
+      document_url: documentUrl,
+      country: form.country,
+      state: form.state,
+      city: form.city,
+      college: form.college,
+      grad_year: form.grad_year,
+    });
 
-    const { data, error } = await supabase
-      .from("w_academic_projects")
-      .insert([
-        {
-          user_id: user.id, // ✅ MUST be auth user id
-          full_name: form.full_name,
-          phone: form.phone,
-          email: form.email,
-          project_domain: form.project_domain,
-          project_title: form.project_title,
-          description: form.description,
-          document_url: documentUrl,
-          country: form.country,
-          state: form.state,
-          city: form.city,
-          college: form.college,
-          grad_year: form.grad_year,
-          status: "pending",
-        },
-      ])
-      .select("id")
-      .single();
+    if (!result?.success) {
+      throw new Error(result?.error || "Failed to submit project");
+    }
 
-    console.log("status data uploaded");
-
-    if (error) throw error;
-    return data.id;
+    return result?.project?.id;
   };
 
 
@@ -96,7 +118,10 @@ const AcademicProjects = () => {
     if (!form.document) return null;
 
     // validations
-    if (form.document.type !== "application/pdf") {
+    if (
+      form.document.type !== "application/pdf" &&
+      !form.document.name.toLowerCase().endsWith(".pdf")
+    ) {
       toast.error("Only PDF files allowed");
       return null;
     }
@@ -105,11 +130,10 @@ const AcademicProjects = () => {
       toast.error("File must be less than 5MB");
       return null;
     }
-    const USERID = profile.id
-    const filedoc = form.document
+ const USERID = user.id;
+const filedoc = form.document;
 
-
-    const filePath = `${USERID}/project_${Date.now()}.pdf`;
+const filePath = `${USERID}/${crypto.randomUUID()}.pdf`;
 
     // 1️⃣ Upload to bucket
 

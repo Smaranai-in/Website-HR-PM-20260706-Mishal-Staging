@@ -1,8 +1,8 @@
 // src/components/AcademicProjectsList.js
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { useAuthModal } from "../context/AuthModalContext";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../supabaseClient";
 import {
   Search,
   LayoutDashboard,
@@ -19,12 +19,9 @@ import {
   School,
   Calendar,
   Briefcase,
+  Filter,
 } from "lucide-react";
 
-function getAuthHeader() {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 export default function AcademicProjectsList() {
   const [items, setItems] = useState([]);
@@ -33,10 +30,9 @@ export default function AcademicProjectsList() {
   const [filterDomain, setFilterDomain] = useState("All");
   const [search, setSearch] = useState("");
   const [error, setError] = useState(null);
-  const { user, loadingUser } = useAuthModal();
+const { profile, loadingUser } = useAuthModal();
   const navigate = useNavigate();
 
-  const BASE_URL =process.env.REACT_APP_API_URL;
 
   const [confirmModal, setConfirmModal] = useState({
     show: false,
@@ -45,42 +41,33 @@ export default function AcademicProjectsList() {
     message: "",
   });
 
-  useEffect(() => {
-    if (!loadingUser) {
-      if (!user || user?.UserRole !== "Admin") navigate("/");
-    }
-  }, [user, loadingUser]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+useEffect(() => {
+  if (!loadingUser) {
+    if (!profile || profile.role !== "admin")
+      navigate("/");
+  }
+}, [profile, loadingUser, navigate]);
 
   // ---------------- LOAD DATA ----------------
-  useEffect(() => {
-    let cancelled = false;
+useEffect(() => {
+  async function loadProjects() {
+    setLoading(true);
 
-    async function load() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const res = await axios.get(
-          `${BASE_URL}/api/academic/getAllProjects`,
-          { withCredentials: true }
-        );
-
-        const data = res.data?.data || [];
-
-        if (!cancelled) setItems(data);
-      } catch (err) {
-        console.error("Failed to load academic projects:", err);
-        if (!cancelled) setError("Failed to load projects. Check console.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    try {
+      const res = await callEdge("get_academic_projects");
+      setItems(res.data || []);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to load projects.");
+    } finally {
+      setLoading(false);
     }
+  }
 
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  loadProjects();
+}, []);
 
   // ---------------- HELPERS (Preserved) ----------------
   const read = (obj, ...keys) => {
@@ -104,16 +91,20 @@ export default function AcademicProjectsList() {
       read(it, "projectDomain", "project_domain") || ""
     ).toString();
 
-    if (filterDomain !== "All" && domain !== filterDomain) return false;
+if (
+  filterDomain !== "All" &&
+  domain.toLowerCase() !== filterDomain.toLowerCase()
+)
+  return false;
 
     if (!search) return true;
 
     const q = search.toLowerCase();
-    return (
-      read(it, "fullName", "full_name").toLowerCase().includes(q) ||
-      read(it, "email").toLowerCase().includes(q) ||
-      read(it, "projectTitle", "project_title").toLowerCase().includes(q)
-    );
+  return (
+  (it.full_name || "").toLowerCase().includes(q) ||
+  (it.email || "").toLowerCase().includes(q) ||
+  (it.project_title || "").toLowerCase().includes(q)
+);
   });
 
   // ---------------- DETAILS & ACTIONS ----------------
@@ -135,48 +126,69 @@ export default function AcademicProjectsList() {
     });
   };
 
-  // ---------------- UPDATE STATUS ----------------
-  const updateStatus = async (id, status) => {
-    try {
-      await axios.patch(
-        `${BASE_URL}/api/academic/updateStatus/${id}`,
-        { status },
-        { headers: { ...getAuthHeader() }, withCredentials: true }
-      );
+  const callEdge = async (action, payload = {}) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-      setItems((prev) =>
-        prev.map((p) =>
-          String(p.id ?? p._id) === String(id) ? { ...p, status } : p
-        )
-      );
-
-      if (selected && String(selected.id ?? selected._id) === String(id)) {
-        setSelected((s) => ({ ...s, status }));
-      }
-    } catch (err) {
-      console.error("Failed to update status:", err);
-      alert("Failed to update status.");
+    if (sessionError || !session?.access_token) {
+      throw new Error("No active session token");
     }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || "Edge request failed");
+    }
+
+    return result;
   };
+
+  // ---------------- UPDATE STATUS ----------------
+const updateStatus = async (id, status) => {
+  try {
+    await callEdge("update_academic_project_status", { id, status });
+
+    setItems((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, status } : p
+      )
+    );
+
+    if (selected?.id === id) {
+      setSelected({ ...selected, status });
+    }
+  } catch (err) {
+    console.error(err);
+    alert("Failed to update status");
+  }
+};
 
   // ---------------- DELETE PROJECT ----------------
-  const deleteProject = async (id) => {
-    try {
-      await axios.delete(
-        `${BASE_URL}/api/academic/deleteProject/${id}`,
-        { headers: getAuthHeader(), withCredentials: true }
-      );
+const deleteProject = async (id) => {
+  try {
+    await callEdge("delete_academic_project", { id });
 
-      setItems((prev) =>
-        prev.filter((p) => String(p.id ?? p._id) !== String(id))
-      );
+    setItems((prev) =>
+      prev.filter((p) => p.id !== id)
+    );
 
-      setSelected(null);
-    } catch (err) {
-      console.error("Failed to delete:", err);
-      alert("Failed to delete project.");
-    }
-  };
+    setSelected(null);
+  } catch (err) {
+    console.error(err);
+    alert("Failed to delete project");
+  }
+};
 
   // ---------------- CSV EXPORT ----------------
   const exportCSV = () => {
@@ -185,28 +197,29 @@ export default function AcademicProjectsList() {
       return;
     }
 
-    const columns = [
-      { key: "id", label: "ID" },
-      { key: "fullName", label: "Full Name" },
-      { key: "email", label: "Email" },
-      { key: "phoneNumber", label: "Phone" },
-      { key: "college", label: "College" },
-      { key: "city", label: "City" },
-      { key: "projectDomain", label: "Project Domain" },
-      { key: "projectTitle", label: "Project Title" },
-      { key: "graduationYear", label: "Graduation Year" },
-      { key: "status", label: "Status" },
-      { key: "createdAt", label: "Submitted At" },
-      { key: "description", label: "Description" },
-    ];
+   const columns = [
+  "id",
+  "full_name",
+  "phone",
+  "email",
+  "project_domain",
+  "project_title",
+  "description",
+  "document_url",
+  "country",
+  "state",
+  "city",
+  "college",
+  "grad_year",
+  "status",
+  "created_at",
+];
 
-    const header = columns.map((c) => escapeCsvValue(c.label)).join(",");
+    const header = columns.join(",");
 
-    const lines = items.map((row) =>
-      columns
-        .map((c) => escapeCsvValue(row[c.key] ?? row[toSnake(c.key)] ?? ""))
-        .join(",")
-    );
+const lines = items.map((row) =>
+  columns.map((c) => escapeCsvValue(row[c])).join(",")
+);
 
     const csv = "\uFEFF" + [header, ...lines].join("\r\n");
 
@@ -250,15 +263,28 @@ export default function AcademicProjectsList() {
   // ---------------- UI ----------------
   return (
     <div className="flex h-screen bg-[#f3f8f7] dark:bg-[#020c1b] font-sans text-slate-800 dark:text-slate-200 overflow-hidden pt-20 transition-colors duration-300">
+      {/* BACKDROP OVERLAY */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
       {/* SIDEBAR */}
-      <aside className="w-72 bg-white dark:bg-[#0A0F2C] border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0 z-20 shadow-sm transition-colors duration-300">
-        <div className="p-6 border-b border-gray-100 dark:border-gray-800">
+      <aside className={`fixed inset-y-0 left-0 w-72 bg-white dark:bg-[#0A0F2C] border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0 z-40 shadow-xl lg:shadow-sm transition-all duration-300 transform lg:relative lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
           <h2 className="text-xl font-bold flex items-center gap-2 text-teal-700 dark:text-teal-400">
             <div className="w-8 h-8 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
               ✨
             </div>
             Academic Projects
           </h2>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <div className="p-4 flex-1 overflow-hidden flex flex-col">
@@ -320,21 +346,31 @@ export default function AcademicProjectsList() {
       <main className="flex-1 flex overflow-hidden relative">
         {/* CENTER COLUMN: LIST */}
         <div
-          className={`flex flex-col p-8 overflow-hidden transition-all duration-300 ${
-            selected ? "w-7/12" : "w-full"
+          className={`flex flex-col p-4 sm:p-8 overflow-hidden transition-all duration-300 ${
+            selected ? "lg:w-7/12 w-full" : "w-full"
           }`}
         >
           {/* HEADER */}
           <div className="mb-8">
-            <div className="inline-flex items-center px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm font-medium mb-3">
-              <Briefcase size={14} className="mr-2" /> Academic Projects
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center px-3 py-1 rounded-full bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm font-medium mb-3">
+                  <Briefcase size={14} className="mr-2" /> Academic Projects
+                </div>
+                <h1 className="text-3xl font-bold text-slate-800 dark:text-white">
+                  Project Applicants{" "}
+                  <span className="text-gray-400 dark:text-gray-500 text-xl font-normal ml-2">
+                    {items.length}
+                  </span>
+                </h1>
+              </div>
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden self-start sm:self-center flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm font-semibold hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-all border border-teal-100 dark:border-teal-800"
+              >
+                <Filter size={16} /> Filters
+              </button>
             </div>
-            <h1 className="text-3xl font-bold text-slate-800 dark:text-white">
-              Project Applicants{" "}
-              <span className="text-gray-400 dark:text-gray-500 text-xl font-normal ml-2">
-                {items.length}
-              </span>
-            </h1>
           </div>
 
           {/* SEARCH BAR */}
@@ -440,7 +476,7 @@ export default function AcademicProjectsList() {
 
         {/* RIGHT COLUMN: DETAILS */}
         {selected && (
-          <div className="w-5/12 bg-white dark:bg-[#0A0F2C] border-l border-gray-200 dark:border-gray-800 flex flex-col shadow-2xl z-30 absolute right-0 h-full animate-in slide-in-from-right-10 duration-300">
+          <div className="w-full lg:w-5/12 bg-white dark:bg-[#0A0F2C] border-l border-gray-200 dark:border-gray-800 flex flex-col shadow-2xl z-30 absolute right-0 h-full animate-in slide-in-from-right-10 duration-300">
             {/* Details Header */}
             <div className="p-6 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
               <div className="flex justify-between items-start mb-4">

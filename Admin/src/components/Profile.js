@@ -26,20 +26,46 @@ function Profile() {
   const [uploading, setUploading] = useState(false);
   const navigate = useNavigate();
 
+  const callEdge = async (action, payload = {}) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("No active session token");
+    }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || "Edge request failed");
+    }
+
+    return result;
+  };
+
 
 
   useEffect(() => {
     const fetchInternDetails = async () => {
       try {
         if (!profile?.id) return;
-        if (!profile?.id) return;
-        const { data, error } = await supabase
-          .from("w_internship_applications")
-          .select("*")
-          .eq("user_id", profile.id)
-          .maybeSingle();
 
-        setInternData(data || null);
+        const result = await callEdge("get_intern_application_by_user_id", {
+          user_id: profile.id,
+        });
+
+        setInternData(result.application || null);
       } catch (error) {
         console.error("Error fetching intern details:", error);
       } finally {
@@ -73,8 +99,9 @@ function Profile() {
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(filePath);
       const imageUrl = urlData?.publicUrl;
-      const { error: dbError } = await supabase.from("w_users").update({ profile_url: imageUrl }).eq("id", user.id);
-      if (dbError) throw dbError;
+
+      await callEdge("update_profile_image", { profile_url: imageUrl });
+
       setProfile({ ...profile, profile_url: imageUrl });
       toast.success("Profile image updated!");
     } catch (err) {

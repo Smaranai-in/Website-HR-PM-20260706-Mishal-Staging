@@ -100,27 +100,57 @@ const CourseSyllabus = ({ open, onClose, course }) => {
             </h2>
 
             <div className="space-y-6">
-              {course.course_week_array?.map((week, idx) => (
-                <div
-                  key={idx}
-                  className="bg-white dark:bg-[#161f40] p-6 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm hover:shadow-md transition-shadow"
-                >
-                  <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mb-3 flex items-center gap-2">
-                    <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2 py-1 rounded text-xs uppercase tracking-wider">
-                      Week {week.week}
-                    </span>
-                    {week.description}
-                  </p>
+              {(() => {
+                let syllabus = [];
+                if (course.course_week_array) {
+                  if (typeof course.course_week_array === "string") {
+                    try {
+                      syllabus = JSON.parse(course.course_week_array);
+                    } catch (e) {
+                      console.error("Failed to parse course_week_array:", e);
+                    }
+                  } else if (Array.isArray(course.course_week_array)) {
+                    syllabus = course.course_week_array;
+                  }
+                }
 
-                  <ul className="ml-2 space-y-2 border-l-2 border-emerald-100 dark:border-emerald-900/50 pl-4 mt-2">
-                    {week.week_array.map((topic, j) => (
-                      <li key={j} className="text-gray-600 dark:text-gray-400 text-sm">
-                        {topic}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+                return syllabus.map((week, idx) => {
+                  let weekNum = week?.week || "";
+                  let weekDesc = week?.description || "";
+                  let topics = [];
+                  if (Array.isArray(week?.week_array)) {
+                    topics = week.week_array;
+                  } else if (typeof week?.week_array === "string") {
+                    try {
+                      topics = JSON.parse(week.week_array);
+                    } catch (e) {
+                      topics = [week.week_array];
+                    }
+                  }
+
+                  return (
+                    <div
+                      key={idx}
+                      className="bg-white dark:bg-[#161f40] p-6 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mb-3 flex items-center gap-2">
+                        <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2 py-1 rounded text-xs uppercase tracking-wider">
+                          Week {weekNum}
+                        </span>
+                        {weekDesc}
+                      </p>
+
+                      <ul className="ml-2 space-y-2 border-l-2 border-emerald-100 dark:border-emerald-900/50 pl-4 mt-2">
+                        {topics.map((topic, j) => (
+                          <li key={j} className="text-gray-600 dark:text-gray-400 text-sm">
+                            {topic}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </div>
 
@@ -133,9 +163,25 @@ const CourseSyllabus = ({ open, onClose, course }) => {
               Enroll Now <ArrowRight size={18} />
             </button>
 
-            <button className="flex items-center justify-center gap-2 px-8 py-3.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-              <Download size={18} /> Brochure
-            </button>
+            {course?.brochure_url ? (
+                <a
+                  href={course.brochure_url}
+                  download
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 px-8 py-3.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <Download size={18} /> Download Brochure
+                </a>
+              ) : (
+                <button
+                  disabled
+                  title="No brochure available for this course"
+                  className="flex items-center justify-center gap-2 px-8 py-3.5 border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-600 font-medium rounded-xl cursor-not-allowed opacity-60"
+                >
+                  <Download size={18} /> Brochure Unavailable
+                </button>
+              )}
           </div>
 
           {/* Enrollment Form Section */}

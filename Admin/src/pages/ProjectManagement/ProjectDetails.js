@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { getDevelopers, getProjectById } from "../../lib/data";
+import { fetchDevelopers, getProjectById } from "../../lib/data";
 import { ProjectClient } from "../../components/projects/project-client";
 
 export default function ProjectDetailsPage() {
@@ -13,7 +13,7 @@ export default function ProjectDetailsPage() {
             try {
                 const [project, developers] = await Promise.all([
                     getProjectById(id),
-                    getDevelopers()
+                    fetchDevelopers()
                 ]);
 
                 if (project) {

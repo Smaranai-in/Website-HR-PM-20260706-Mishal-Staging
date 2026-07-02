@@ -7,27 +7,33 @@ Welcome to the **User Application Management System** repository. This project i
 This project has undergone significant improvements to enhance user experience, security, and developer productivity:
 
 ### 🎨 UI/UX Overhaul
-*   **Modern Light Theme**: Switched to a clean, high-contrast light theme for better readability and professional aesthetics.
-*   **Enhanced Accessibility**: Improved text contrast ratios (dark text on light backgrounds) across all pages.
-*   **Responsive Design**: Refined layouts to ensure seamless usage across different screen sizes.
+*   **Professional Pro Workspace**: Introduced a state-of-the-art "Pro" version of the Intern Workspace featuring advanced glassmorphism, ambient background effects, and a highly polished information architecture.
+*   **Modern Design Language**: Switched to a curated high-contrast light theme with sophisticated indigo/blue accents, optimized for professional environments and long-term readability.
+*   **Dynamic Data Visualization**: Integrated real-time analytics cards in the intern dashboard to track task completion, velocity, and project health at a glance.
+*   **Enhanced Accessibility**: Implemented strict accessibility standards with improved contrast ratios and screen-reader friendly semantic HTML.
+*   **Micro-Animations**: Leveraged `framer-motion` for smooth, staggered list entries, hover-state elevation, and fluid layout transitions that provide a premium feel.
 
-### ⚡ Backend & Security
-*   **Supabase Edge Functions**: Migrated server-side logic to Supabase Edge Functions for better performance and security.
-*   **Row Level Security (RLS)**: Implemented strict RLS policies to ensure users can only access their own data, while Admins have full oversight.
-*   **Secure Storage**: Configured public storage buckets with specific policies for resumes, project documents, and profile avatars.
+### 🔐 Absolute Session Persistence
+*   **Zero-Logout Refresh**: Implemented a robust multi-phase authentication restoration engine that ensures users and admins stay logged in across page refreshes, browser restarts, and tab closures.
+*   **Atomic Auth Restoration**: Integrated a `loadingUser` guard that waits for Supabase to definitively resolve the session from local storage before rendering routes, eliminating the "flash" of logged-out content.
+*   **Centralized Route Guards**: Introduced a unified `ProtectedRoute` component that preserves the destination URL during session restoration, preventing unwanted redirects to the home page.
+*   **Debuggable Auth Flow**: Added comprehensive logging in the browser console for real-time monitoring of session rehydration and token synchronization.
 
 ### 📊 New Features
-*   **Role-Based Access Control (RBAC)**: Distinct `user` and `admin` roles to control access to the dashboard.
+*   **Advanced Task Orchestration**: New task management system with status-based accent bars, interactive status switching, and priority-driven visualization.
+*   **Role-Based Access Control (RBAC)**: Robust `user` and `admin` permission layers controlling access across the entire ecosystem.
+*   **Real-time Synchronization**: Instant data parity between the User and Admin portals for application tracking, interview results, and work reporting.
+*   **Professional Project Analytics**: Dedicated sidebar for project-specific health metrics, including percentage-based velocity tracking and status indicators.
 
 ---
 
 ## 🤖 AI Interview App Integration
 
-The AI Interview application has been successfully integrated into the main `User` project from its previously standalone architecture.
+The AI Interview application has been successfully integrated into the main `User` project, providing an end-to-end automated assessment workflow.
 
 ### Integration Details
 1. **Frontend Consolidation**: The interview UI components (`ResumeUpload`, `Interview`, `Results`) were ported into the `User/src/Pages/AiInterview` directory.
-2. **Contextual Authentication**: The standalone login system was removed. The application now seamlessly utilizes the User project's existing `useAuthModal` context for session management and user identities mapping to the `w_users` table.
+2. **Contextual Authentication**: The system utilizes the `useAuthModal` context for seamless session mapping to the `w_users` table.
 
 ### Supabase Configuration Guide
 To ensure the AI Interview app functions correctly, the following database and edge function configurations are required:
@@ -36,7 +42,7 @@ To ensure the AI Interview app functions correctly, the following database and e
 Create a new public storage bucket specifically for the AI interview resumes:
 *   **Bucket Name**: `Interview_Resumes`
 *   **Public**: True
-*   **Policies**: Add `INSERT`, `SELECT`, `UPDATE`, and `DELETE` policies for the authenticated roles, or public policies depending on your usage.
+*   **Policies**: Add `INSERT`, `SELECT`, `UPDATE`, and `DELETE` policies for the authenticated roles.
 
 #### 2. Database Schema (Foreign Keys & RLS)
 The `interviews` table requires Row Level Security (RLS) configuration and a correct foreign key constraint linking to the User application's `w_users` table:
@@ -63,7 +69,7 @@ npx supabase functions deploy Interview_grade-interview --no-verify-jwt --projec
 ```
 
 #### 4. Gemini API Configuration
-The Edge Functions require a Google Gemini API Key. This must be stored securely in the Supabase Dashboard, **not** via environment variables in the React app.
+The Edge Functions require a Google Gemini API Key. This must be stored securely in the Supabase Dashboard.
 
 1. Go to your **Supabase Dashboard**.
 2. Navigate to **Edge Functions** > **Secrets**.
@@ -85,7 +91,7 @@ Here is how the system operates from end-to-end:
     *   Data is stored in the `public.users` table.
 
 3.  **Application Submission**:
-    *   **Internships**: Users fill out a detailed form and upload their Resume (PDF). usage of Edge Functions ensures validation.
+    *   **Internships**: Users fill out a detailed form and upload their Resume (PDF). Usage of Edge Functions ensures validation.
     *   **Research**: Users propose research topics and request support.
     *   **Academic Projects**: Students submit project documentation for review.
     *   **Courses**: Users browse and enroll in available courses.
@@ -93,10 +99,17 @@ Here is how the system operates from end-to-end:
 4.  **Admin Review**:
     *   Admins log in to the **Admin Dashboard**.
     *   They review submissions, download attached documents from Storage Buckets, and update application statuses (e.g., *Pending* → *Selected*).
+    *   Admins can track intern performance, attendance, and feedback in real-time.
 
-5.  **Status Updates & AI Interviews**:
-    *   Users can track the live status of their applications on their dedicated **My Page** dashboard.
-    *   This includes an interactive timeline of application events, admin remarks, and direct access to their AI Interview results and performance scores.
+5.  **Status Updates & Intern Dashboard**:
+    *   Users track live application status on the **My Page** dashboard.
+    *   Upon selection, interns gain access to the **Professional Pro Workspace**, featuring real-time analytics, task orchestration, and work reporting synchronized with the Admin panel.
+    *   Includes an interactive timeline of application events, admin remarks, and AI Interview performance scores.
+
+#### 5. Performance & Admin Policies
+To fix performance issues and grant Admin access to intern activity, run these scripts in the Supabase SQL Editor:
+- `database/performance_optimization.sql`: Adds optimized indexes to key tables.
+- `database/admin_access_policies.sql`: Grants Administrators permission to view and manage all intern activity.
 
 ---
 

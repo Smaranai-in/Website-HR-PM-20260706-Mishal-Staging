@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../../supabaseClient';
+import { toast } from 'react-toastify';
 import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Award, RefreshCw, LogOut, Sparkles, Target, Shield, Brain, Send, Calendar, Clock, User, Phone, Mail, Code, Database, Cpu, Brain as BrainIcon } from 'lucide-react';
 
-export default function Results({ results }) {
-  const { score, feedback, is_suspicious, tab_switch_count } = results;
+export default function Results({ results, profile, interviewId, onRetake }) {
+  const { score, feedback, is_suspicious, tab_switch_count, face_missing_duration = 0, face_visibility_warnings = 0 } = results;
   const [showJobForm, setShowJobForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -24,6 +25,18 @@ export default function Results({ results }) {
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formSubmitted, setFormSubmitted] = useState(false);
+
+  // Pre-fill form with profile data
+  useEffect(() => {
+    if (profile) {
+      setFormData(prev => ({
+        ...prev,
+        name: profile.full_name || profile.name || '',
+        email: profile.email || '',
+        phone: profile.phone_number || profile.phone || '',
+      }));
+    }
+  }, [profile]);
 
   const getScoreColor = (score) => {
     if (score >= 80) return 'from-green-400 to-emerald-500';
@@ -51,6 +64,34 @@ export default function Results({ results }) {
   const gradeInfo = getGrade(score);
   const isPassed = score >= 60;
 
+  const callEdge = async (action, payload = {}) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error('No active session token');
+    }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || 'Edge request failed');
+    }
+
+    return result;
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -68,13 +109,38 @@ export default function Results({ results }) {
 
   const handleSubmitJobForm = async (e) => {
     e.preventDefault();
+    if (!profile?.id) {
+      toast.error("Please log in to submit your application");
+      return;
+    }
+
     setFormSubmitting(true);
 
-    // Simulate form submission
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const applicationData = {
+        full_name: formData.name,
+        email: formData.email,
+        phone_number: formData.phone,
+        top_priority_role: formData.role,
+        availability: formData.daysPerWeek.toString(),
+        start_time: formData.dailyTimingFrom,
+        end_time: formData.dailyTimingTo,
+        current_status: 'Applied',
+        current_sub_status: 'Application Received',
+        created_at: new Date().toISOString(),
+      };
 
-    setFormSubmitting(false);
-    setFormSubmitted(true);
+      await callEdge('create_internship_application', applicationData);
+
+      toast.success("Application submitted successfully!");
+      setFormSubmitted(true);
+      setShowJobForm(false);
+    } catch (err) {
+      console.error('Quick Apply Error:', err);
+      toast.error(err?.message || 'Failed to submit application');
+    } finally {
+      setFormSubmitting(false);
+    }
   };
 
   return (
@@ -84,7 +150,7 @@ export default function Results({ results }) {
         <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[120px] animate-blob" />
         <div className="absolute top-[30%] right-[-10%] w-[500px] h-[500px] bg-purple-500/10 rounded-full blur-[100px] animate-blob animation-delay-2000" />
         <div className="absolute bottom-[-10%] left-[20%] w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[100px] animate-blob animation-delay-4000" />
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] dark:opacity-10" />
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.65\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E')] opacity-[0.03] dark:opacity-10" />
 
         {/* Floating particles */}
         <div className="absolute top-1/4 left-1/4 w-2 h-2 bg-blue-500/30 rounded-full animate-float" />
@@ -245,14 +311,28 @@ export default function Results({ results }) {
                           <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
                         )}
                       </div>
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Proctoring</h3>
+                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Proctoring Summary</h3>
                     </div>
                     <div className="space-y-4">
                       <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-100 dark:border-transparent">
                         <span className="text-slate-600 dark:text-slate-400">Tab Switches</span>
-                        <span className={`font-bold text-lg ${tab_switch_count > 3 ? 'text-red-400' : 'text-green-400'
+                        <span className={`font-bold text-lg ${tab_switch_count >= 3 ? 'text-red-400' : 'text-green-400'
                           }`}>
                           {tab_switch_count}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-100 dark:border-transparent">
+                        <span className="text-slate-600 dark:text-slate-400">Face Hidden Duration</span>
+                        <span className={`font-bold text-lg ${face_missing_duration >= 30 ? 'text-red-400' : face_missing_duration > 0 ? 'text-amber-400' : 'text-green-400'
+                          }`}>
+                          {face_missing_duration < 60 ? `${face_missing_duration}s` : `${Math.floor(face_missing_duration / 60)}m ${face_missing_duration % 60}s`}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-100 dark:border-transparent">
+                        <span className="text-slate-600 dark:text-slate-400">Face Hidden Warnings</span>
+                        <span className={`font-bold text-lg ${face_visibility_warnings > 0 ? 'text-amber-400' : 'text-green-400'
+                          }`}>
+                          {face_visibility_warnings}
                         </span>
                       </div>
                       <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-100 dark:border-transparent">
@@ -280,9 +360,14 @@ export default function Results({ results }) {
                     <div>
                       <h4 className="text-red-400 font-semibold mb-2">Activity Flagged</h4>
                       <p className="text-slate-300 text-sm leading-relaxed">
-                        Multiple tab switches were detected during your interview. In a real interview setting,
-                        this behavior could result in disqualification. Consider retaking the interview with
-                        proper focus and environment setup.
+                        {tab_switch_count >= 3 && face_missing_duration >= 30 ? (
+                          'Multiple tab switches and prolonged periods of camera blockage/face absence were detected during your interview.'
+                        ) : tab_switch_count >= 3 ? (
+                          'Multiple tab switches were detected during your interview.'
+                        ) : (
+                          'Your camera was blocked or your face was not visible for a prolonged period (30+ seconds total) during the interview.'
+                        )}{' '}
+                        In a real interview setting, this behavior could result in disqualification. Consider retaking the interview with proper focus and environment setup.
                       </p>
                     </div>
                   </div>
@@ -308,311 +393,7 @@ export default function Results({ results }) {
                 </div>
               </div>
 
-              {/* Job Application Form Button (for passed users) */}
-              {isPassed && !formSubmitted && (
-                <div className="mt-8 p-6 bg-gradient-to-br from-green-50 dark:from-green-500/10 to-blue-50 dark:to-blue-500/10 rounded-2xl border border-green-200 dark:border-green-500/20 animate-fade-in shadow-sm dark:shadow-none">
-                  <div className="flex items-center justify-between flex-wrap gap-4">
-                    <div className="flex items-center gap-4">
-                      <div className="bg-green-100 dark:bg-green-500/20 p-3 rounded-xl">
-                        <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div>
-                        <h3 className="text-slate-900 dark:text-white font-semibold text-lg">Ready to Start Your Career?</h3>
-                        <p className="text-slate-600 dark:text-slate-400 text-sm">Fill out the job application form to proceed</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setShowJobForm(true)}
-                      className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold rounded-xl hover:from-green-500 hover:to-emerald-500 transition-all duration-300 shadow-lg shadow-green-500/25 hover:shadow-green-500/40 hover:-translate-y-0.5 flex items-center gap-2"
-                    >
-                      <Send className="w-5 h-5" />
-                      Fill Application
-                    </button>
-                  </div>
-                </div>
-              )}
 
-              {/* Job Application Form */}
-              {showJobForm && isPassed && (
-                <div className="mt-8 animate-fade-in">
-                  <div className="bg-white dark:bg-white/5 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-2xl p-8 shadow-sm dark:shadow-none">
-                    <div className="flex items-center gap-3 mb-8">
-                      <div className="bg-gradient-to-r from-green-500 to-emerald-500 p-2 rounded-xl">
-                        <Send className="w-5 h-5 text-white" />
-                      </div>
-                      <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Job Application Form</h3>
-                    </div>
-
-                    <form onSubmit={handleSubmitJobForm} className="space-y-6">
-                      {/* Personal Information */}
-                      <div className="grid md:grid-cols-3 gap-6">
-                        <div className="space-y-2">
-                          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                            <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                            Name
-                          </label>
-                          <input
-                            type="text"
-                            name="name"
-                            value={formData.name}
-                            onChange={handleInputChange}
-                            required
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
-                            placeholder="Your full name"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                            <Phone className="w-4 h-4 text-green-600 dark:text-green-400" />
-                            Phone
-                          </label>
-                          <input
-                            type="tel"
-                            name="phone"
-                            value={formData.phone}
-                            onChange={handleInputChange}
-                            required
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500/50 transition-all duration-200"
-                            placeholder="+91 98765 43210"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                            <Mail className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                            Email
-                          </label>
-                          <input
-                            type="email"
-                            name="email"
-                            value={formData.email}
-                            onChange={handleInputChange}
-                            required
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-200"
-                            placeholder="your@email.com"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Role Selection */}
-                      <div className="space-y-2">
-                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                          <Code className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
-                          Role
-                        </label>
-                        <div className="flex flex-wrap gap-3">
-                          {['Frontend', 'Backend', 'FullStack', 'AI', 'Figma'].map((role) => (
-                            <button
-                              key={role}
-                              type="button"
-                              onClick={() => setFormData(prev => ({ ...prev, role }))}
-                              className={`px-4 py-2 rounded-xl border transition-all duration-200 ${formData.role === role
-                                ? 'bg-yellow-100 dark:bg-yellow-500/20 border-yellow-300 dark:border-yellow-500/50 text-yellow-700 dark:text-yellow-400'
-                                : 'bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white'
-                                }`}
-                            >
-                              {role}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Availability */}
-                      <div className="grid md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                            <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                            Days available/week
-                          </label>
-                          <input
-                            type="number"
-                            name="daysPerWeek"
-                            value={formData.daysPerWeek}
-                            onChange={handleInputChange}
-                            min="1"
-                            max="7"
-                            required
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all duration-200"
-                            placeholder="e.g., 5"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                            <Clock className="w-4 h-4 text-green-600 dark:text-green-400" />
-                            Daily timing (from – to)
-                          </label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="time"
-                              name="dailyTimingFrom"
-                              value={formData.dailyTimingFrom}
-                              onChange={handleInputChange}
-                              required
-                              className="flex-1 px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all duration-200"
-                            />
-                            <span className="text-slate-500">–</span>
-                            <input
-                              type="time"
-                              name="dailyTimingTo"
-                              value={formData.dailyTimingTo}
-                              onChange={handleInputChange}
-                              required
-                              className="flex-1 px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all duration-200"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Hours and Duration */}
-                      <div className="grid md:grid-cols-3 gap-6">
-                        <div className="space-y-2">
-                          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                            <Clock className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                            Weekly hours
-                          </label>
-                          <select
-                            name="weeklyHours"
-                            value={formData.weeklyHours}
-                            onChange={handleInputChange}
-                            required
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all duration-200 appearance-none cursor-pointer"
-                          >
-                            <option value="" className="bg-white dark:bg-slate-900">Select hours</option>
-                            <option value="15" className="bg-white dark:bg-slate-900">15 hours</option>
-                            <option value="30" className="bg-white dark:bg-slate-900">30 hours</option>
-                            <option value="40" className="bg-white dark:bg-slate-900">40 hours</option>
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                            <Calendar className="w-4 h-4 text-pink-600 dark:text-pink-400" />
-                            Duration
-                          </label>
-                          <select
-                            name="duration"
-                            value={formData.duration}
-                            onChange={handleInputChange}
-                            required
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-500/50 transition-all duration-200 appearance-none cursor-pointer"
-                          >
-                            <option value="" className="bg-white dark:bg-slate-900">Select duration</option>
-                            <option value="2 months" className="bg-white dark:bg-slate-900">2 months</option>
-                            <option value="3 months" className="bg-white dark:bg-slate-900">3 months</option>
-                            <option value="4 months" className="bg-white dark:bg-slate-900">4 months</option>
-                            <option value="5 months" className="bg-white dark:bg-slate-900">5 months</option>
-                            <option value="6 months" className="bg-white dark:bg-slate-900">6 months</option>
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                            <Calendar className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                            Earliest joining date
-                          </label>
-                          <input
-                            type="date"
-                            name="joiningDate"
-                            value={formData.joiningDate}
-                            onChange={handleInputChange}
-                            required
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all duration-200"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Course */}
-                      <div className="space-y-2">
-                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                          <Code className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                          Course
-                        </label>
-                        <input
-                          type="text"
-                          name="course"
-                          value={formData.course}
-                          onChange={handleInputChange}
-                          required
-                          className="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all duration-200"
-                          placeholder="e.g., Full Stack Development Bootcamp"
-                        />
-                      </div>
-
-                      {/* Self Ratings */}
-                      <div className="space-y-4">
-                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-                          <BrainIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                          How do you rate yourself in each skill (out of 10)?
-                        </label>
-                        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                          {[
-                            { field: 'selfRatingReact', label: 'React', icon: Code, color: 'blue' },
-                            { field: 'selfRatingDB', label: 'Database', icon: Database, color: 'green' },
-                            { field: 'selfRatingGenAI', label: 'GenAI', icon: Cpu, color: 'purple' },
-                            { field: 'selfRatingML', label: 'ML', icon: BrainIcon, color: 'pink' },
-                          ].map((skill) => (
-                            <div key={skill.field} className="bg-slate-50 dark:bg-white/5 rounded-xl p-4 border border-slate-200 dark:border-white/10">
-                              <div className="flex items-center gap-2 mb-3">
-                                <skill.icon className={`w-5 h-5 text-${skill.color}-600 dark:text-${skill.color}-400`} />
-                                <span className="text-slate-900 dark:text-white font-medium">{skill.label}</span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="10"
-                                  value={formData[skill.field]}
-                                  onChange={(e) => handleRatingChange(skill.field, e.target.value)}
-                                  className="flex-1 h-2 bg-slate-200 dark:bg-white/10 rounded-full appearance-none cursor-pointer range-track-light relative z-10"
-                                  style={{
-                                    background: `linear-gradient(to right, #3b82f6 ${formData[skill.field] * 10}%, transparent ${formData[skill.field] * 10}%)`
-                                  }}
-                                />
-                                <span className={`text-lg font-bold text-${skill.color}-600 dark:text-${skill.color}-400 w-8 text-center`}>
-                                  {formData[skill.field]}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Submit Button */}
-                      <div className="flex gap-4 pt-4">
-                        <button
-                          type="submit"
-                          disabled={formSubmitting}
-                          className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all duration-300 ${formSubmitting
-                            ? 'bg-slate-100 dark:bg-white/10 text-slate-400 dark:text-slate-500 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-500 hover:to-emerald-500 shadow-lg shadow-green-500/25 hover:shadow-green-500/40 hover:-translate-y-0.5'
-                            }`}
-                        >
-                          <span className="flex items-center justify-center gap-2">
-                            {formSubmitting ? (
-                              <>
-                                <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                </svg>
-                                Submitting...
-                              </>
-                            ) : (
-                              <>
-                                <Send className="w-5 h-5" />
-                                Submit Application
-                              </>
-                            )}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowJobForm(false)}
-                          className="px-6 py-4 bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-white font-medium rounded-xl border border-slate-200 dark:border-white/10 transition-all duration-200"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
 
               {/* Success Message */}
               {formSubmitted && (
@@ -634,7 +415,7 @@ export default function Results({ results }) {
               <div className="mt-8 pt-6 border-t border-slate-200 dark:border-white/10">
                 <div className="flex justify-center">
                   <button
-                    onClick={() => window.location.reload()}
+                    onClick={onRetake || (() => window.location.reload())}
                     className="group relative w-full md:w-1/2 py-4 px-6 rounded-xl font-semibold transition-all duration-300 bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-500 hover:to-purple-500 shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:-translate-y-0.5"
                   >
                     <span className="flex items-center justify-center gap-2">

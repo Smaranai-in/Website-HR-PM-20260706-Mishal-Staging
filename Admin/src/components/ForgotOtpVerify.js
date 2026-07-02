@@ -35,7 +35,7 @@ function ForgotOtpVerify() {
     setLoading(true);
 
     try {
-      await resetPassword();
+      await resetPassword(password);
       toast.success("Password updated successfully");
       localStorage.removeItem("Login");
 

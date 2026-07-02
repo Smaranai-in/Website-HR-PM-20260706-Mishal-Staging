@@ -15,6 +15,36 @@ function Profile() {
     if (!loadingUser && !user) navigate("/");
   }, [user, loadingUser, navigate]);
 
+  const callEdge = async (action, payload) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      throw new Error("Please login again");
+    }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || "Edge request failed");
+    }
+
+    return result;
+  };
+
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -32,8 +62,8 @@ function Profile() {
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(filePath);
       const imageUrl = urlData?.publicUrl;
-      const { error: dbError } = await supabase.from("w_users").update({ profile_url: imageUrl }).eq("id", user.id);
-      if (dbError) throw dbError;
+
+      await callEdge("update_profile_image", { profile_url: imageUrl });
       setProfile({ ...profile, profile_url: imageUrl });
       toast.success("Profile image updated!");
     } catch (err) {

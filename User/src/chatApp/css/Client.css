@@ -644,7 +644,7 @@
 }
 
 /* Fix for long filenames in Documents */
-.truncate {
+.client-chat-container .truncate {
   max-width: 140px !important; /* Adjust this if the text still pushes the bubble */
   display: inline-block;
   white-space: nowrap;
@@ -714,7 +714,7 @@
 
 
 :not(.dark) .client-bubble-content span,
-:not(.dark) .truncate {
+:not(.dark) .client-chat-container .truncate {
   color: #111b21 !important;
 }
 

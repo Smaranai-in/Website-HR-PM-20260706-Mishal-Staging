@@ -72,6 +72,12 @@ export default function ApplicantsList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedMenus, setExpandedMenus] = useState({}); // Track expanded submenus
+  const [visibleCount, setVisibleCount] = useState(30);
+
+  // Reset pagination when filter or search changes
+  useEffect(() => {
+    setVisibleCount(30);
+  }, [statusFilter, searchQuery]);
 
   // Modal State
   const [confirmModal, setConfirmModal] = useState({
@@ -194,18 +200,39 @@ export default function ApplicantsList() {
     }
   }, [profile, loadingUser, navigate]);
 
-  // ---------------- HELPER: GET ACCESS TOKEN ----------------
-  const getAccessToken = async () => {
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token;
+  const callEdge = async (action, payload = {}) => {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("User not authenticated");
+    }
+
+    const response = await fetch(
+      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action, ...payload }),
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result?.error) {
+      throw new Error(result?.error || "Edge request failed");
+    }
+
+    return result;
   };
 
   // ---------------- FETCH APPLICANTS ----------------
   const fetchInternshipApplicants = async (statusFilter) => {
-    const session = await supabase.auth.getSession();
-    const token = session.data.session?.access_token;
-
-    if (!token) throw new Error("User not authenticated");
 
     let statusParam = "";
 
@@ -265,29 +292,9 @@ export default function ApplicantsList() {
     // But since backend likely filters by exact string, we might rename data or just support new status. 
     // Let's assume we use "Inactive" going forward.
 
-    const query = statusFilter === "All" ? "" : `?status=${statusParam}`;
-
-    // Unified Edge Function Call
-    const res = await fetch(
-      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "get_applications",
-          status: statusParam || "All",
-        }),
-      },
-    );
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error || "Failed to fetch applicants");
-    }
+    const data = await callEdge("get_applications", {
+      status: statusParam || "All",
+    });
 
     // Map new schema fields to expected frontend fields
     const mappedApplications = (data.applications || []).map(app => {
@@ -356,28 +363,9 @@ export default function ApplicantsList() {
 
       setLoadingProjects(true);
 
-      const token = await getAccessToken();
-      const res = await fetch(
-        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            action: "get_projects",
-            intern_id: internId,
-          }),
-        }
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to fetch projects");
-      }
-
+      const data = await callEdge("get_projects", {
+        intern_id: internId,
+      });
 
       setProjects(data.projects || []);
     } catch (err) {
@@ -396,25 +384,11 @@ export default function ApplicantsList() {
     setIsProjectSubmitting(true);
 
     try {
-      const token = await getAccessToken();
-      const res = await fetch(
-        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            action: "add_project",
-            intern_id: selected.user_id,
-            project_name: projectForm.project_name,
-            assigned_task: projectForm.assigned_task,
-          }),
-        },
-      );
-
-      if (!res.ok) throw new Error("Failed to add project");
+      await callEdge("add_project", {
+        intern_id: selected.user_id,
+        project_name: projectForm.project_name,
+        assigned_task: projectForm.assigned_task,
+      });
 
       toast.success("Project added successfully!");
       setProjectForm({
@@ -440,27 +414,10 @@ export default function ApplicantsList() {
     setUpdatingProjectId(projectId);
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const res = await fetch(
-        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            action: "add_weekly_update",
-            project_id: projectId,
-            update_text: text,
-          }),
-        },
-      );
-
-      if (!res.ok) throw new Error("Failed to add update");
+      await callEdge("add_weekly_update", {
+        project_id: projectId,
+        update_text: text,
+      });
 
       toast.success("Weekly update added!");
       setUpdateInputs((prev) => ({ ...prev, [projectId]: "" })); // Clear input
@@ -756,77 +713,21 @@ export default function ApplicantsList() {
   };
 
   const deleteProject = async (projectId) => {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Not authenticated");
-
-    const res = await fetch(
-      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/manage-internships`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "delete_project",
-          id: projectId,
-        }),
-      },
-    );
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    return data;
+    return callEdge("delete_project", { id: projectId });
   };
 
   const deleteInternship = async (applicationId) => {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Not authenticated");
-
-    const res = await fetch(
-      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "delete_application",
-          id: applicationId,
-        }),
-      },
-    );
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    return data;
+    return callEdge("delete_application", { id: applicationId });
   };
 
-  const updateInternship = async (id, action, statusHistory) => {
-    const token = await getAccessToken();
-    if (!token) throw new Error("Not authenticated");
-
-    const res = await fetch(
-      `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "update_application",
-          id,
-          is_select: action,
-          status_history: statusHistory,
-        }),
-      },
-    );
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    return data;
+  const updateInternship = async (id, action, statusHistory, review, reviewtimestamp) => {
+    return callEdge("update_application", {
+      id,
+      is_select: action,
+      status_history: statusHistory,
+      review,
+      reviewtimestamp,
+    });
   };
 
   // ---------------- CENTRAL CONFIRM ACTION ----------------
@@ -864,27 +765,10 @@ export default function ApplicantsList() {
       const { projectId, updateId } = confirmModal.id;
 
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        const res = await fetch(
-          `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/w_edge`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              action: "delete_weekly_update",
-              project_id: projectId,
-              update_id: updateId,
-            }),
-          },
-        );
-
-        if (!res.ok) throw new Error("Failed to delete update");
+        await callEdge("delete_weekly_update", {
+          project_id: projectId,
+          update_id: updateId,
+        });
 
         toast.success("Update deleted successfully");
         fetchProjects(selected.user_id); // Refresh list
@@ -903,6 +787,15 @@ export default function ApplicantsList() {
       setIsConfirmingAction(false);
       setConfirmModal({ show: false, action: null, message: "", id: null });
       return;
+    }
+
+    // Validation: Require text entry for Weekly Review
+    if (["Week 1 Review", "Week 2 Review"].includes(confirmModal.action)) {
+      if (!reviewText || reviewText.trim() === "") {
+        toast.error("Please enter a review description before saving.");
+        setIsConfirmingAction(false);
+        return;
+      }
     }
 
     try {
@@ -969,10 +862,51 @@ export default function ApplicantsList() {
         await updateInternship(
           selected.id,
           confirmModal.action,
-          updatedHistory
+          updatedHistory,
+          updatedReviews,
+          updatedTimestamps
         );
 
         toast.success(`Applicant updated to ${confirmModal.action}!`); // Success message first
+
+        // --- AUTOMATIC ONBOARDING EMAIL GENERATION ---
+        const onboardingStatuses = [
+          "Rules Shared & Email Sent",
+          "Pre-boarding / Selected",
+          "Selected",
+          "Selection Email Sent",
+          "Onboarded",
+          "Internship",
+          "Pre-boarding Completed"
+        ];
+        
+        if (onboardingStatuses.includes(confirmModal.action) && selected?.email) {
+          const subject = encodeURIComponent("Congratulations! You've been selected for an Internship at SmaranAI 🚀");
+          const body = encodeURIComponent(`Dear ${selected.full_name},
+
+Congratulations! We are thrilled to inform you that you have been selected for the ${selected.top_priority_role || 'Internship'} program at SmaranAI.
+
+As part of your pre-boarding process, please review our standard rules and guidelines below:
+
+📌 ONBOARDING RULES & NEXT STEPS:
+1. Communication: All official communication and updates will occur through the Intern Portal.
+2. Dashboard Access: Your Intern Dashboard will be unlocked shortly.
+3. Attendance: You are required to log your daily activity and check-in/out through the portal.
+4. Assessments: Weekly tasks must be completed and submitted before their respective deadlines.
+5. Professionalism: We maintain a strict code of conduct and expect professional behavior at all times.
+
+Please reply to this email to confirm your acceptance of the offer and acknowledge these rules. Once we receive your confirmation, we will finalize your onboarding setup.
+
+Welcome to the team! We are excited to have you on board.
+
+Best regards,
+SmaranAI Admin Team`);
+          
+          // Open default mail client with pre-filled details
+          const mailtoUrl = `mailto:${selected.email}?subject=${subject}&body=${body}`;
+          window.open(mailtoUrl, '_blank');
+        }
+        // ---------------------------------------------
 
         // REFETCH to ensure we see server state
         // This confirms if the DB actually saved it.
@@ -1132,7 +1066,7 @@ export default function ApplicantsList() {
                 </h1>
               </div>
 
-              {["Interview Stage", "Interview Scheduled", "Interview Rescheduled", "Interview Passed", "Interview Failed", "Interview No Show", "Interview On Hold"].includes(statusFilter) && (
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={() => navigate("/ai-interviews")}
                   className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white rounded-xl text-sm font-medium shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5 w-fit"
@@ -1140,7 +1074,16 @@ export default function ApplicantsList() {
                   <MonitorPlay size={18} />
                   AI-Interview
                 </button>
-              )}
+                {["Pre-boarding / Selected", "Rules Shared & Email Sent", "Pre-boarding Completed", "Internship", "Week 1 Review", "Week 2 Review", "On Track", "Performance Issue", "Recommended for Offer"].includes(statusFilter) && (
+                  <button
+                    onClick={() => navigate("/user-activity")}
+                    className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white rounded-xl text-sm font-medium shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5 w-fit"
+                  >
+                    <ClipboardList size={18} />
+                    Intern Activity
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="relative mb-6">
@@ -1167,48 +1110,59 @@ export default function ApplicantsList() {
                   No applicants found.
                 </div>
               ) : (
-                filtered.map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => openDetails(item.id)}
-                    className={`group bg-white dark:bg-[#112240] p-4 md:p-5 rounded-xl border transition-all cursor-pointer hover:shadow-md flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-5 ${selected?.id === item.id
-                      ? "ring-2 ring-teal-500 border-transparent shadow-md"
-                      : "border-gray-100 dark:border-gray-700"
-                      }`}
-                  >
+                <>
+                  {filtered.slice(0, visibleCount).map((item) => (
                     <div
-                      className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-bold text-base sm:text-lg shadow-sm flex-shrink-0 ${getAvatarBg(
-                        item.is_select,
-                      )}`}
+                      key={item.id}
+                      onClick={() => openDetails(item.id)}
+                      className={`group bg-white dark:bg-[#112240] p-4 md:p-5 rounded-xl border transition-all cursor-pointer hover:shadow-md flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-5 ${selected?.id === item.id
+                        ? "ring-2 ring-teal-500 border-transparent shadow-md"
+                        : "border-gray-100 dark:border-gray-700"
+                        }`}
                     >
-                      {getInitials(item.full_name)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg truncate">
-                        {item.full_name}
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300 truncate">
-                        {item.email}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1 truncate flex items-center gap-1">
-                        <School size={12} />{" "}
-                        {item.university || "University not specified"}
-                      </p>
-                    </div>
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-0 sm:ml-4 w-full sm:w-auto">
-                      <span className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-1 sm:mr-2">
-                        <Clock size={12} /> {getDateLabel(item)} {formatDateTime(getLastUpdatedTime(item))}
-                      </span>
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide self-start ${getStatusColor(
+                      <div
+                        className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-bold text-base sm:text-lg shadow-sm flex-shrink-0 ${getAvatarBg(
                           item.is_select,
                         )}`}
                       >
-                        {getStatusLabel(item.is_select)}
-                      </span>
+                        {getInitials(item.full_name)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg truncate">
+                          {item.full_name}
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 truncate">
+                          {item.email}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1 truncate flex items-center gap-1">
+                          <School size={12} />{" "}
+                          {item.university || "University not specified"}
+                        </p>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-0 sm:ml-4 w-full sm:w-auto">
+                        <span className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-1 sm:mr-2">
+                          <Clock size={12} /> {getDateLabel(item)} {formatDateTime(getLastUpdatedTime(item))}
+                        </span>
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide self-start ${getStatusColor(
+                            item.is_select,
+                          )}`}
+                        >
+                          {getStatusLabel(item.is_select)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                  
+                  {filtered.length > visibleCount && (
+                    <button
+                      onClick={() => setVisibleCount((prev) => prev + 30)}
+                      className="w-full py-3.5 mt-2 text-center text-teal-600 dark:text-teal-400 font-semibold bg-teal-50/50 dark:bg-teal-950/20 hover:bg-teal-100/50 dark:hover:bg-teal-950/35 rounded-xl transition-all border border-dashed border-teal-200 dark:border-teal-900/50 flex items-center justify-center gap-2"
+                    >
+                      Show More Applicants (Showing {visibleCount} of {filtered.length})
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -1965,7 +1919,7 @@ export default function ApplicantsList() {
                   <>
                     <button
                       onClick={() =>
-                        openConfirm("Assessment Stage", "Hire this applicant?")
+                        openConfirm("Assessment Stage", "Move this applicant to Assessment Stage?")
                       }
                       className="bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg font-medium transition-colors shadow-sm flex items-center justify-center gap-2 text-sm"
                     >
@@ -2072,7 +2026,7 @@ export default function ApplicantsList() {
                   <>
                     <button
                       onClick={() =>
-                        openConfirm("Selected", "Hire this applicant?")
+                        openConfirm("Selected", "Select this applicant?")
                       }
                       className="bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg font-medium transition-colors shadow-sm flex items-center justify-center gap-2 text-sm"
                     >
@@ -2092,7 +2046,7 @@ export default function ApplicantsList() {
                   <>
                     <button
                       onClick={() =>
-                        openConfirm("Onboarded", "Hire this applicant?")
+                        openConfirm("Onboarded", "Onboard this applicant?")
                       }
                       className="bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg font-medium transition-colors shadow-sm flex items-center justify-center gap-2 text-sm"
                     >
@@ -2108,34 +2062,49 @@ export default function ApplicantsList() {
                     </button>
                   </>
                 )}
-                {selected.is_select === "Onboarded" && (
-                  <>
-                    <button
-                      onClick={() =>
-                        openConfirm("Completed", "Hire this applicant?")
-                      }
-                      className="bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg font-medium transition-colors shadow-sm flex items-center justify-center gap-2 text-sm"
-                    >
-                      <UserCheck size={16} /> Completed
-                    </button>
-                    <button
-                      onClick={() =>
-                        openConfirm("Withdrawn", "Hire this applicant?")
-                      }
-                      className="bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg font-medium transition-colors shadow-sm flex items-center justify-center gap-2 text-sm"
-                    >
-                      <UserCheck size={16} /> Withdrawn
-                    </button>
-                    <button
-                      onClick={() =>
-                        openConfirm("Rejected", "Reject this applicant?")
-                      }
-                      className="bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg font-medium transition-colors shadow-sm flex items-center justify-center gap-2 text-sm"
-                    >
-                      <XCircle size={16} /> Reject
-                    </button>
-                  </>
-                )}
+                {[
+                  "Onboarded",
+                  "Internship",
+                  "Week 1 Review",
+                  "Week 2 Review",
+                  "On Track",
+                  "Performance Issue",
+                  "Recommended for Offer"
+                ].includes(selected.is_select) && (
+                    <div className="col-span-2 space-y-3 bg-emerald-50 dark:bg-emerald-900/10 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                      <h3 className="text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wide mb-2">Internship Actions</h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button onClick={() => openConfirm("Week 1 Review", "Move to Week 1 Review?")} className="bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 py-1.5 rounded text-[10px] font-medium hover:bg-emerald-50 transition-colors">Week 1 Review</button>
+                        <button onClick={() => openConfirm("Week 2 Review", "Move to Week 2 Review?")} className="bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 py-1.5 rounded text-[10px] font-medium hover:bg-emerald-50 transition-colors">Week 2 Review</button>
+                        
+                        <button onClick={() => openConfirm("On Track", "Mark as On Track?")} className="bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 py-1.5 rounded text-[10px] font-medium hover:bg-green-50 transition-colors">On Track</button>
+                        <button onClick={() => openConfirm("Performance Issue", "Mark as Performance Issue?")} className="bg-white dark:bg-gray-800 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 py-1.5 rounded text-[10px] font-medium hover:bg-red-50 transition-colors">Performance Issue</button>
+
+                        <button onClick={() => openConfirm("Recommended for Offer", "Recommend for Offer?")} className="bg-white dark:bg-gray-800 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 py-1.5 rounded text-[10px] font-medium hover:bg-teal-50 transition-colors col-span-2">Recommended for Offer</button>
+                      </div>
+
+                      <div className="border-t border-emerald-200 dark:border-emerald-800 pt-3 grid grid-cols-3 gap-2">
+                        <button
+                          onClick={() => openConfirm("Completed", "Mark as Completed?")}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-medium transition-colors shadow-sm flex items-center justify-center gap-1 text-[11px]"
+                        >
+                          <CheckCircle size={14} /> Complete
+                        </button>
+                        <button
+                          onClick={() => openConfirm("Withdrawn", "Mark as Withdrawn?")}
+                          className="bg-gray-500 hover:bg-gray-600 text-white py-2 rounded-lg font-medium transition-colors shadow-sm flex items-center justify-center gap-1 text-[11px]"
+                        >
+                          <Ban size={14} /> Withdraw
+                        </button>
+                        <button
+                          onClick={() => openConfirm("Rejected", "Reject this intern?")}
+                          className="bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg font-medium transition-colors shadow-sm flex items-center justify-center gap-1 text-[11px]"
+                        >
+                          <XCircle size={14} /> Reject
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 {selected.is_select === "Rejected" && (
                   <>
                     <button
@@ -2720,7 +2689,7 @@ export default function ApplicantsList() {
                   </div>
                   <textarea
                     className="w-full p-3 pl-9 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-sm text-gray-800 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 h-24 resize-none"
-                    placeholder="Add a review or comment (optional)..."
+                    placeholder={["Week 1 Review", "Week 2 Review"].includes(confirmModal.action) ? "Write weekly review details (required)..." : "Add a review or comment (optional)..."}
                     value={reviewText}
                     onChange={(e) => setReviewText(e.target.value)}
                   />

@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { toast } from "react-toastify";
 import {
   Clock,
@@ -25,8 +24,6 @@ const CourseCards = () => {
 
   const { user, loadingUser } = useAuthModal();
   const navigate = useNavigate();
-
-  const BASE_URL = process.env.REACT_APP_API_URL;
 
   const gradients = [
     "from-blue-500 to-cyan-400",
@@ -75,7 +72,18 @@ const CourseCards = () => {
               text: `${c.total_enrolled}+ enrolled`,
             },
           ],
-          detailsBottom: c.course_array,
+          detailsBottom: Array.isArray(c.course_array)
+            ? c.course_array
+            : (() => {
+                if (typeof c.course_array === "string") {
+                  try {
+                    return JSON.parse(c.course_array);
+                  } catch (e) {
+                    return [c.course_array];
+                  }
+                }
+                return [];
+              })(),
         }));
 
         setCourses(formatted);
@@ -89,9 +97,11 @@ const CourseCards = () => {
     handleGetCourses();
   }, []);
 
-  useEffect(() => {
-    if (!loadingUser && !user) navigate("/");
-  }, [user, loadingUser]);
+useEffect(() => {
+  if (!loadingUser && !user) {
+    navigate("/");
+  }
+}, [user, loadingUser, navigate]);
 
   return (
     <div className="pt-16 md:pt-20 bg-white dark:bg-[#0A0F2C] min-h-screen transition-colors duration-300">
@@ -192,7 +202,7 @@ const CourseCards = () => {
           ) : (
             courses.map((course, idx) => (
               <div
-                key={idx}
+                key={course.id}
                 className="bg-white dark:bg-[#0E1835] border border-gray-100 dark:border-gray-700 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
               >
                 {/* Top Colored Bar */}
@@ -255,11 +265,11 @@ const CourseCards = () => {
                       </div>
 
                       {/* Features Grid */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 mt-6 text-sm text-gray-600 dark:text-gray-400">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 mt-6 text-sm">
                         {course.detailsBottom.map((f, j) => (
                           <div key={j} className="flex items-center gap-2">
                             <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                            <span className="truncate">{f}</span>
+                            <span className="truncate font-medium text-gray-700 dark:text-gray-300">{f}</span>
                           </div>
                         ))}
                       </div>
@@ -281,7 +291,7 @@ const CourseCards = () => {
                             <Tag className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                           </div>
                           <span className="text-xl font-bold text-gray-800 dark:text-white">
-                            {!course.coursefee || course.coursefee == 0 ? (
+                            {!course.coursefee || course.coursefee === 0 ? (
                               <span className="text-emerald-600 dark:text-emerald-400">
                                 Free
                               </span>
@@ -318,7 +328,9 @@ const CourseCards = () => {
               Let our AI engine guide you to the perfect course based on your
               skills and goals.
             </p>
-            <button className="px-8 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl shadow-lg hover:shadow-emerald-500/30 hover:scale-105 transition-all font-semibold">
+            <button
+            onClick={() => toast.info("AI Recommendation coming soon")}
+             className="px-8 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl shadow-lg hover:shadow-emerald-500/30 hover:scale-105 transition-all font-semibold">
               Get AI Recommendations
             </button>
           </div>

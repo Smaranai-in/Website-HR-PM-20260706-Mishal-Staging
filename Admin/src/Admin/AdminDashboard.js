@@ -7,83 +7,24 @@ import {
   ArrowRight,
   Briefcase,
   MonitorPlay,
+  ShieldAlert,
+  Calendar,
 } from "lucide-react";
 import { useAuthModal } from "../context/AuthModalContext";
 import { useNavigate } from "react-router-dom";
-
-import Login from "../components/Login";
-import SignUp from "../components/SignUp";
-import SignUpOtp from "../components/SignUpOtp";
-import ForgotEmail from "../components/ForgotEmail";
-import ForgotOtpVerify from "../components/ForgotOtpVerify";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
 
   // 🔐 Auth context (DO NOT TOUCH)
-  const {
-    profile,
-    loadingUser,
-    activePage,
-    setActivePage,
-  } = useAuthModal();
-
-  // 📧 Local modal states
-  const [signupEmail, setSignupEmail] = React.useState("");
-  const [forgotEmail, setForgotEmail] = React.useState("");
-
-  const handleClose = () => setActivePage(null);
-
-  // 🔁 Modal switcher
-  const pageactivity = () => {
-    switch (activePage) {
-      case "login":
-        return (
-          <Login
-            onClose={handleClose}
-            onSignup={() => setActivePage("signup")}
-            onForgot={() => setActivePage("forgot")}
-          />
-        );
-      case "signup":
-        return (
-          <SignUp
-            email={signupEmail}
-            setemail={setSignupEmail}
-            onClose={handleClose}
-            onSubmit={() => setActivePage("signupotp")}
-            onLogin={() => setActivePage("login")}
-          />
-        );
-      case "signupotp":
-        return (
-          <SignUpOtp
-            email={signupEmail}
-            onClose={handleClose}
-            onSubmit={() => setActivePage("login")}
-          />
-        );
-      case "forgot":
-        return (
-          <ForgotEmail
-            email={forgotEmail}
-            setemail={setForgotEmail}
-            onClose={handleClose}
-            onSubmit={() => setActivePage("forgotverify")}
-          />
-        );
-      case "forgotverify":
-        return (
-          <ForgotOtpVerify
-            email={forgotEmail}
-            onClose={handleClose}
-            onSubmit={() => setActivePage("login")}
-          />
-        );
-      default:
-        return null;
-    }
-  };
+const {
+  setActivePage,
+  profile,
+  logout,
+  loginbool,
+  activePage,
+  loadingUser
+} = useAuthModal();
 
   // ⏳ LOADING
   if (loadingUser) {
@@ -100,12 +41,6 @@ export default function AdminDashboard() {
       <section className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 
         dark:from-[#020c1b] dark:via-[#020c1b] dark:to-[#051021]
         px-6 pt-40 pb-20 transition-colors duration-300">
-
-        {activePage && (
-          <div className="fixed top-[40px] right-[30px] z-[9999]">
-            {pageactivity()}
-          </div>
-        )}
 
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="relative max-w-md w-full bg-white dark:bg-[#112240]
@@ -160,15 +95,23 @@ export default function AdminDashboard() {
       icon: <BookOpen size={32} className="text-white" />,
       glow: "bg-blue-300 dark:bg-blue-900",
       gradient: "from-blue-500 to-indigo-500",
-      // navigate: "/admincourseenrollment",
+      navigate: "/admincourseenrollment",
     },
+    {
+  title: "Create Course",
+  desc: "Add new courses to the platform.",
+  icon: <BookOpen size={32} className="text-white" />,
+  glow: "bg-green-300 dark:bg-green-900",
+  gradient: "from-green-500 to-emerald-500",
+  navigate: "/insertCourse",
+},
     {
       title: "Research Applicants",
       desc: "Manage research applications.",
       icon: <FileText size={32} className="text-white" />,
       glow: "bg-purple-300 dark:bg-purple-900",
       gradient: "from-purple-500 to-fuchsia-500",
-      // navigate: "/ResearchSupportProjectList",
+      navigate: "/ResearchSupportProjectList",
     },
     {
       title: "Academic Projects",
@@ -176,7 +119,7 @@ export default function AdminDashboard() {
       icon: <GraduationCap size={32} className="text-white" />,
       glow: "bg-orange-300 dark:bg-orange-900",
       gradient: "from-orange-500 to-rose-500",
-      // navigate: "/AcademicProjectsList",
+      navigate: "/AcademicProjectsList",
     },
     {
       title: "Projects & Tasks",
@@ -193,6 +136,22 @@ export default function AdminDashboard() {
       glow: "bg-pink-300 dark:bg-pink-900",
       gradient: "from-pink-500 to-rose-500",
       navigate: "/ai-interviews",
+    },
+    {
+      title: "User Management",
+      desc: "Manage users and assign administrator privileges.",
+      icon: <ShieldAlert size={32} className="text-white" />,
+      glow: "bg-teal-300 dark:bg-teal-900",
+      gradient: "from-teal-500 to-cyan-500",
+      navigate: "/user-management",
+    },
+    {
+      title: "Leave Management",
+      desc: "View, approve, or reject intern leave applications.",
+      icon: <Calendar size={32} className="text-white" />,
+      glow: "bg-amber-300 dark:bg-amber-900",
+      gradient: "from-amber-500 to-orange-500",
+      navigate: "/admin-leaves",
     },
   ];
 
@@ -222,7 +181,7 @@ export default function AdminDashboard() {
               key={index}
               className="relative bg-white dark:bg-[#112240]
                 rounded-3xl shadow-xl dark:shadow-none
-                dark:border dark:border-gray-800 p-10">
+                dark:border dark:border-gray-800 p-6 sm:p-10 overflow-hidden">
 
               <div
                 className={`absolute -top-10 -right-10 w-40 h-40 blur-3xl opacity-30 dark:opacity-20 ${card.glow}`}
