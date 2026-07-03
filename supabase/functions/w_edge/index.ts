@@ -9,6 +9,8 @@ const ALLOWED_ORIGINS = [
     "https://www.smaranai.in",
     "http://localhost:3001",
     "http://localhost:3002",
+    "https://user-smaranai.netlify.app",
+    "https://admin-smaranai.netlify.app",
 ];
 
 const getCorsHeaders = (origin: string | null) => ({
