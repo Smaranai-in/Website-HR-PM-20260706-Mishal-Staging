@@ -41,3 +41,7 @@ Thumbs.db
 *.zip
 *.tar.gz
 *.rar
+
+# Local documentation
+documents/
+
