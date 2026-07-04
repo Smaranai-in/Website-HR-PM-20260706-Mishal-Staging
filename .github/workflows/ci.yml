@@ -35,9 +35,6 @@ jobs:
       uses: cypress-io/github-action@v6
       with:
         working-directory: "Frontend - Mishal's Lab/Frontend/User"
-        start: npx react-scripts start
+        start: npx serve -s build -l 3002 --no-port-switching
         wait-on: "http://localhost:3002"
         wait-on-timeout: 120
-      env:
-        PORT: 3002
-        CI: true
