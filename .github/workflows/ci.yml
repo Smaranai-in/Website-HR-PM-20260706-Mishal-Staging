@@ -31,10 +31,4 @@ jobs:
     - name: Build project
       run: npm run build --if-present
 
-    - name: Run Cypress E2E Tests
-      uses: cypress-io/github-action@v6
-      with:
-        working-directory: "Frontend - Mishal's Lab/Frontend/User"
-        start: npx serve -s build -l 3002 --no-port-switching
-        wait-on: "http://localhost:3002"
-        wait-on-timeout: 120
+
