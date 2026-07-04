@@ -1,0 +1,8 @@
+{
+  "name": "smaranai-project",
+  "version": "1.0.0",
+  "description": "SmaranAI User, Admin and Deno Edge Function Monorepo",
+  "scripts": {
+    "test": "node run_tests.js"
+  }
+}

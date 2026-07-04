@@ -101,7 +101,7 @@ function AppContent() {
 
 function App() {
   return (
-    <Router basename="/user">
+    <Router basename="/">
       <AuthModalProvider>
         <AssessmentProvider>
           <AppContent />
