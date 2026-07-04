@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "SmaranAI User, Admin and Deno Edge Function Monorepo",
   "scripts": {
-    "test": "node run_tests.js"
+    "test": "node run_tests.js",
+    "cypress:open": "cypress open",
+    "cypress:run": "cypress run"
+  },
+  "devDependencies": {
+    "cypress": "^13.17.0"
   }
 }
