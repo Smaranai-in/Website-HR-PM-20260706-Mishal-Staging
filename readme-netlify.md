@@ -110,3 +110,5 @@ Get-ChildItem -Path "User/build" -Recurse | Where-Object { !$_.PSIsContainer } |
 }
 $zipFile.Dispose()
 ```
+
+### MKM: either the folder netlify can be uploaded or the zip file. both works.
