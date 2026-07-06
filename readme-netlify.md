@@ -90,3 +90,23 @@ Before zipping and deploying, you can run the automated tests at the root of the
 npm test
 ```
 This runs `run_tests.js` which verifies User compilation, Admin compilation, and live Supabase edge function status.
+
+---
+
+## ⚠️ Important Windows Zipping Note (By Antigravity)
+
+When packaging the `combined_build.zip` on a Windows host, do not use the default PowerShell `Compress-Archive` cmdlet. `Compress-Archive` packages folder paths with backslash (`\`) separators, which are not recognized by Netlify's Linux-based servers. This causes the files to extract with backslashes in their filenames at the root level, causing JS requests to fall back to the index page and failing with:
+`Uncaught SyntaxError: Unexpected token '<'`
+
+### Correct Zipping Method in PowerShell:
+Use a script that explicitly forces standard Unix forward-slash (`/`) directory separators for zip entries:
+```powershell
+[System.Reflection.Assembly]::LoadWithPartialName("System.IO.Compression.FileSystem") | Out-Null
+$zipFile = [System.IO.Compression.ZipFile]::Open("combined_build.zip", "Create")
+Get-ChildItem -Path "User/build" -Recurse | Where-Object { !$_.PSIsContainer } | ForEach-Object {
+    $relative = $_.FullName.Substring((Get-Item "User/build").FullName.Length + 1)
+    $zipPath = $relative.Replace("\", "/")
+    [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zipFile, $_.FullName, $zipPath) | Out-Null
+}
+$zipFile.Dispose()
+```
