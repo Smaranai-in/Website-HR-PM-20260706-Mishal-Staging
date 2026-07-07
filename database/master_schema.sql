@@ -344,3 +344,49 @@ CREATE TABLE IF NOT EXISTS public.internship_performance_reviews (
 -- 6. 'chat-files' (Public: true)
 
 -- Policies for storage can be found in storage.sql
+
+
+-- 13. AUDIT LOGGING FOR INTERNSHIP APPLICATIONS
+CREATE TABLE IF NOT EXISTS public.w_internship_applications_audit_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    application_id UUID NOT NULL REFERENCES public.w_internship_applications(id) ON DELETE CASCADE,
+    old_values JSONB,
+    new_values JSONB,
+    changed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_w_internship_apps_audit_app_id 
+    ON public.w_internship_applications_audit_log(application_id);
+
+ALTER TABLE public.w_internship_applications_audit_log ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Admins can view all audit logs" ON public.w_internship_applications_audit_log;
+CREATE POLICY "Admins can view all audit logs" ON public.w_internship_applications_audit_log 
+FOR SELECT TO authenticated 
+USING (EXISTS (SELECT 1 FROM public.w_users WHERE id = auth.uid() AND role = 'admin'));
+
+CREATE OR REPLACE FUNCTION public.log_internship_application_changes()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.w_internship_applications_audit_log (
+        application_id, 
+        old_values, 
+        new_values, 
+        changed_at
+    )
+    VALUES (
+        NEW.id,
+        to_jsonb(OLD),
+        to_jsonb(NEW),
+        NOW()
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_log_internship_application_changes ON public.w_internship_applications;
+CREATE TRIGGER trg_log_internship_application_changes
+    AFTER UPDATE ON public.w_internship_applications
+    FOR EACH ROW
+    EXECUTE FUNCTION public.log_internship_application_changes();
+

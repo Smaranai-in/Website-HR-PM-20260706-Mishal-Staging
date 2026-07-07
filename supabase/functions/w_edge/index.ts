@@ -1061,6 +1061,54 @@ case "create_internship_application": {
 
     if (error) throw error;
 
+    // Automatically submit to Google Form (Backend trigger)
+    const googleFormUrl = Deno.env.get("GOOGLE_FORM_RESPONSE_URL");
+    if (googleFormUrl) {
+        try {
+            const fieldMap: Record<string, string> = {
+                full_name: Deno.env.get("GOOGLE_FORM_FIELD_FULL_NAME") || "entry.1000001",
+                email: Deno.env.get("GOOGLE_FORM_FIELD_EMAIL") || "entry.1000002",
+                phone_number: Deno.env.get("GOOGLE_FORM_FIELD_PHONE") || "entry.1000003",
+                linkedin_profile: Deno.env.get("GOOGLE_FORM_FIELD_LINKEDIN") || "entry.1000004",
+                portfolio_url: Deno.env.get("GOOGLE_FORM_FIELD_PORTFOLIO") || "entry.1000005",
+                github_url: Deno.env.get("GOOGLE_FORM_FIELD_GITHUB") || "entry.1000006",
+                university: Deno.env.get("GOOGLE_FORM_FIELD_UNIVERSITY") || "entry.1000007",
+                country: Deno.env.get("GOOGLE_FORM_FIELD_COUNTRY") || "entry.1000008",
+                state: Deno.env.get("GOOGLE_FORM_FIELD_STATE") || "entry.1000009",
+                city: Deno.env.get("GOOGLE_FORM_FIELD_CITY") || "entry.1000010",
+                program_type: Deno.env.get("GOOGLE_FORM_FIELD_PROGRAM_TYPE") || "entry.1000011",
+                branch: Deno.env.get("GOOGLE_FORM_FIELD_BRANCH") || "entry.1000012",
+                graduation_year: Deno.env.get("GOOGLE_FORM_FIELD_GRAD_YEAR") || "entry.1000013",
+                top_priority_role: Deno.env.get("GOOGLE_FORM_FIELD_ROLE") || "entry.1000014",
+                availability: Deno.env.get("GOOGLE_FORM_FIELD_AVAILABILITY") || "entry.1000015",
+                available_to_join: Deno.env.get("GOOGLE_FORM_FIELD_JOIN_DATE") || "entry.1000016",
+                cv_url: Deno.env.get("GOOGLE_FORM_FIELD_CV") || "entry.1000017",
+            };
+
+            const formData = new URLSearchParams();
+            for (const [key, entryId] of Object.entries(fieldMap)) {
+                if (applicationData[key] !== undefined && applicationData[key] !== null) {
+                    formData.append(entryId, String(applicationData[key]));
+                }
+            }
+
+            // Fire request to Google Form Response URL asynchronously (non-blocking)
+            fetch(googleFormUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: formData.toString(),
+            }).then((res) => {
+                console.log(`[Google Form] Submission status: ${res.status}`);
+            }).catch((err) => {
+                console.error("[Google Form] Submission error:", err);
+            });
+        } catch (gErr) {
+            console.error("[Google Form] Setup error:", gErr);
+        }
+    }
+
     return respond({
         success: true
     });
