@@ -1111,7 +1111,6 @@ case "create_internship_application": {
                 const experienceField = Deno.env.get("GOOGLE_FORM_FIELD_EXPERIENCE") || "entry.2145989347";
                 formData.append(experienceField, combinedExperience);
             }
-
             for (const [key, entryId] of Object.entries(fieldMap)) {
                 if (applicationData[key] !== undefined && applicationData[key] !== null) {
                     formData.append(entryId, String(applicationData[key]));

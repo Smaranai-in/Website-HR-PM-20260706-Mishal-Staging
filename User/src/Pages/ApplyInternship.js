@@ -67,7 +67,6 @@ const postToGoogleForm = async (applicationData) => {
   
   // Standard email collection parameter
   formData.append("emailAddress", String(applicationData.email || ""));
-
   for (const [key, entryId] of Object.entries(fieldMapping)) {
     if (applicationData[key] !== undefined && applicationData[key] !== null) {
       formData.append(entryId, String(applicationData[key]));
@@ -77,7 +76,7 @@ const postToGoogleForm = async (applicationData) => {
   try {
     await fetch(GOOGLE_FORM_URL, {
       method: "POST",
-      mode: "no-cors",
+      mode: "no-cors", // Required to prevent CORS errors in browsers
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
       },
@@ -493,7 +492,7 @@ export default function ApplyInternship() {
         
         toast.success("Application submitted successfully!");
         
-        // Auto submit to Google Form
+        // Automatically submit to Google Form (Client-side trigger)
         postToGoogleForm(applicationData);
         setHasApplied(true);
       }
