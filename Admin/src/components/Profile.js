@@ -173,8 +173,9 @@ function Profile() {
                   </h3>
                   <Detail label="Full Name" value={internData.full_name} />
                   <Detail label="University" value={internData.university} />
-                  <Detail label="Degree & Branch" value={`${internData.program_type} - ${internData.branch}`} />
+                  <Detail label="Degree & Major" value={`${internData.program_type} - ${internData.major_specialization || internData.branch || "—"}`} />
                   <Detail label="Graduation Year" value={internData.graduation_year} />
+                  <Detail label="State (Native)" value={internData.native_state || "—"} />
                 </div>
 
                 {/* Role & Availability */}
@@ -183,9 +184,11 @@ function Profile() {
                     <Clock size={14} /> Role & Availability
                   </h3>
                   <Detail label="Priority Role" value={internData.top_priority_role} />
+                  <Detail label="Self Rating" value={internData.role_rating ? `${internData.role_rating}/10` : "—"} />
                   <Detail label="Availability" value={internData.availability} />
                   <Detail label="Ready to Join" value={internData.available_to_join} />
-                  <Detail label="Working Hours" value={`${internData.start_time} - ${internData.end_time}`} />
+                  <Detail label="Stay Duration" value={internData.duration_stay || "—"} />
+                  <Detail label="Available Timings" value={internData.days_timings || `${internData.start_time || "—"} - ${internData.end_time || "—"}`} />
                 </div>
 
                 {/* Contact & Professional Links */}
@@ -194,6 +197,10 @@ function Profile() {
                     <FileText size={14} /> Contact & Links
                   </h3>
                   <Detail label="Phone" value={internData.phone_number} />
+                  <Detail label="Hear About Us" value={internData.how_heard_about_us || "—"} />
+                  {internData.gsheet_id && (
+                    <Detail label="Google Sheet ID" value={internData.gsheet_id} />
+                  )}
                   <div className="flex flex-wrap gap-3 pt-2">
                     {internData.linkedin_profile && (
                       <a href={internData.linkedin_profile} target="_blank" className="p-2 bg-slate-100 dark:bg-[#0a192f] rounded-lg text-blue-600 hover:scale-110 transition-transform">
@@ -224,13 +231,37 @@ function Profile() {
                 </div>
               </div>
 
-              {/* Experience Description Footer */}
-              {internData.work_experience_desc && (
+              {/* Skills Description & Experience Months */}
+              {(internData.skills_description || internData.work_experience_desc) && (
+                <div className="px-8 pb-4 pt-4">
+                  <div className="bg-slate-50 dark:bg-[#0a192f] p-4 rounded-xl border border-slate-100 dark:border-slate-800 space-y-4">
+                    <div>
+                      <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">Skills & Experience Summary</p>
+                      <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed italic">
+                        "{internData.skills_description || internData.work_experience_desc}"
+                      </p>
+                    </div>
+                    {(internData.experience_months || internData.highest_stipend) && (
+                      <div className="grid grid-cols-2 gap-4 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3">
+                        <div>
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">Experience (Months):</span> {internData.experience_months || "—"}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">Highest Stipend:</span> {internData.highest_stipend || "—"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Remarks Comments */}
+              {internData.remarks && (
                 <div className="px-8 pb-8 pt-4">
                   <div className="bg-slate-50 dark:bg-[#0a192f] p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-                    <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">Work/Internship Description</p>
+                    <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">Candidate Remarks / Suggestions</p>
                     <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed italic">
-                      "{internData.work_experience_desc}"
+                      "{internData.remarks}"
                     </p>
                   </div>
                 </div>

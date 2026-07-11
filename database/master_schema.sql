@@ -70,8 +70,20 @@ CREATE TABLE IF NOT EXISTS public.w_internship_applications (
     start_time TIME,
     end_time TIME,
     
-    interview_date DATE,
     available_to_join TEXT,
+    
+    how_heard_about_us TEXT,
+    apply_confirmation TEXT,
+    role_rating TEXT,
+    skills_description TEXT,
+    native_state TEXT,
+    highest_stipend TEXT,
+    experience_months TEXT,
+    duration_stay TEXT,
+    remarks TEXT,
+    days_timings TEXT,
+    major_specialization TEXT,
+    gsheet_id TEXT,
     
     current_status TEXT DEFAULT 'Applied', -- 'Applied', 'Under Review', 'Selected', 'Rejected', etc.
     current_sub_status TEXT DEFAULT 'Application Received',

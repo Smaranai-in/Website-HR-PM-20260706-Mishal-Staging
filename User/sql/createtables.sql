@@ -77,8 +77,20 @@ create table w_internship_applications (
   start_time time,
   end_time time,
 
-  interview_date date,
   available_to_join text,
+  
+  how_heard_about_us text,
+  apply_confirmation text,
+  role_rating text,
+  skills_description text,
+  native_state text,
+  highest_stipend text,
+  experience_months text,
+  duration_stay text,
+  remarks text,
+  days_timings text,
+  major_specialization text,
+  gsheet_id text,
 
   cv_url text,
 
