@@ -27,6 +27,62 @@ import { useNavigate } from "react-router-dom";
 import { useAuthModal } from "../context/AuthModalContext";
 import { supabase } from "../supabaseClient";
 
+const postToGoogleForm = async (applicationData) => {
+  // Replace with your Google Form URL e.g. "https://docs.google.com/forms/d/e/1FAIpQLSfxxxxxxxxx/formResponse"
+  const GOOGLE_FORM_URL = process.env.REACT_APP_GOOGLE_FORM_URL || "";
+  
+  if (!GOOGLE_FORM_URL) {
+    console.log("ℹ️ Google Form URL is not configured. Skipping client-side form post.");
+    return;
+  }
+
+  // To find Google Form entry IDs:
+  // 1. Open your published Google Form in a browser.
+  // 2. Open Developer Tools (F12) and inspect the input elements.
+  // 3. Search for "name=\"entry." attributes (e.g. entry.123456789).
+  // 4. Map those entry IDs to the keys below.
+  const fieldMapping = {
+    full_name: "entry.1000001",
+    email: "entry.1000002",
+    phone_number: "entry.1000003",
+    linkedin_profile: "entry.1000004",
+    portfolio_url: "entry.1000005",
+    github_url: "entry.1000006",
+    university: "entry.1000007",
+    country: "entry.1000008",
+    state: "entry.1000009",
+    city: "entry.1000010",
+    program_type: "entry.1000011",
+    branch: "entry.1000012",
+    graduation_year: "entry.1000013",
+    top_priority_role: "entry.1000014",
+    availability: "entry.1000015",
+    available_to_join: "entry.1000016",
+    cv_url: "entry.1000017",
+  };
+
+  const formData = new URLSearchParams();
+  for (const [key, entryId] of Object.entries(fieldMapping)) {
+    if (applicationData[key] !== undefined && applicationData[key] !== null) {
+      formData.append(entryId, String(applicationData[key]));
+    }
+  }
+
+  try {
+    await fetch(GOOGLE_FORM_URL, {
+      method: "POST",
+      mode: "no-cors", // Required to prevent CORS errors in browsers
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: formData.toString(),
+    });
+    console.log("✅ Application successfully submitted to Google Form.");
+  } catch (error) {
+    console.error("❌ Failed to submit to Google Form:", error);
+  }
+};
+
 export default function ApplyInternship() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -517,6 +573,10 @@ if (!response.ok) {
   throw new Error(result.error);
 }
         toast.success("Application submitted successfully!");
+        
+        // Automatically submit to Google Form (Client-side trigger)
+        postToGoogleForm(applicationData);
+
         setHasApplied(true); // Switch to applied view
       }
 
