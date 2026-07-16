@@ -182,3 +182,38 @@ function formatRow(headers, rowVals) {
    * Who has access: `Anyone`
    * Copy the Web App URL.
 3. **Configure Environment Variable**: Set the `GOOGLE_GSHEET_WEBAPP_URL` environment variable inside the Supabase vault secrets.
+
+---
+
+## 🔍 5. Function Breakdowns & Descriptions
+
+Here is a detailed explanation of what each function in the Apps Script project is responsible for:
+
+### Webhook API Functions (New)
+* **`doPost(e)`**  
+  An HTTP POST handler that acts as a secure API endpoint. When the database edge function submits a payload containing a new application:
+  1. Validates the `secret` key.
+  2. Maps standard database keys to sheet columns dynamically.
+  3. Appends the new application record as a row in the sheet.
+  4. Generates a unique sequential `ApplicationID` (e.g. `A0042`).
+  5. Assembles all columns to write a summary inside the `Summary-Auto` cell.
+  6. Returns the generated ID back to the backend database instantly in the JSON response body.
+  
+* **`getFieldKeyFromHeader(header)`**  
+  A mapping helper. It normalizes headers (e.g. `"Full Name"`, `"Email Address"`) by removing spaces and symbols to match the JSON keys sent by the backend.
+
+### Legacy Form Trigger Functions (Existing)
+* **`onFormSubmit(e)`**  
+  Triggered automatically whenever a user manually submits the public Google Form. Calls `handleApplicationId`, `handleSummaryAuto`, and triggers the webhook back to Supabase.
+  
+* **`handleApplicationId(e)`**  
+  Iterates through all existing entries in the Sheet to find the highest sequential number, then generates the next `ApplicationID` (e.g. `A0001`) and saves it to the row.
+  
+* **`handleSummaryAuto(e)`**  
+  Retrieves all columns for the submitted row and compiles them into a single string formatted to display inside the `Summary-Auto` cell.
+  
+* **`syncGsheetIdToDb(e)`**  
+  Fires a POST request back to Supabase Edge Function to update the synced `gsheet_id` matching the applicant's email address.
+  
+* **`formatRow(headers, rowVals)`**  
+  Concatenates headers and their corresponding values into a multi-line string used for the automated summaries.
