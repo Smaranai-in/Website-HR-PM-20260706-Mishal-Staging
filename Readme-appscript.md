@@ -78,12 +78,14 @@ function doPost(e) {
       var idColIdx = headers.indexOf("ApplicationID") + 1;
       var newID = "";
       if (idColIdx > 0) {
-        var data = sheet.getRange(2, idColIdx, newRowNum - 2).getValues();
         var maxNum = 0;
-        for (var j = 0; j < data.length; j++) {
-          if (data[j][0]) {
-            var num = parseInt(data[j][0].toString().replace("A", ""), 10);
-            if (!isNaN(num) && num > maxNum) maxNum = num;
+        if (newRowNum > 2) {
+          var data = sheet.getRange(2, idColIdx, newRowNum - 2).getValues();
+          for (var j = 0; j < data.length; j++) {
+            if (data[j][0]) {
+              var num = parseInt(data[j][0].toString().replace("A", ""), 10);
+              if (!isNaN(num) && num > maxNum) maxNum = num;
+            }
           }
         }
         newID = "A" + ("0000" + (maxNum + 1)).slice(-4);
@@ -169,13 +171,14 @@ function handleApplicationId(e) {
 
   if (cell.getValue() !== "") return;
 
-  const data = sheet.getRange(2, col, row - 2).getValues();
   let maxNum = 0;
-
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][0]) {
-      const num = parseInt(data[i][0].toString().replace("A", ""), 10);
-      if (!isNaN(num) && num > maxNum) maxNum = num;
+  if (row > 2) {
+    const data = sheet.getRange(2, col, row - 2).getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][0]) {
+        const num = parseInt(data[i][0].toString().replace("A", ""), 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
     }
   }
 
