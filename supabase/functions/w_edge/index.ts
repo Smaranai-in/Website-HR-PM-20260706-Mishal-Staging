@@ -1063,7 +1063,7 @@ case "create_internship_application": {
     if (error) throw error;
 
     // Try secure backend-to-backend sync via Google Apps Script Web App first
-    const webAppUrl = Deno.env.get("GOOGLE_GSHEET_WEBAPP_URL") || "https://script.google.com/macros/s/AKfycbzpK8ZA9WBeHVgcEYytbdRybZRHsGfIGdQz1yRYCaCGcxi9mtHWU4Q_av3WcTsGlxZ1DQ/exec";
+    const webAppUrl = Deno.env.get("GOOGLE_GSHEET_WEBAPP_URL") || "https://script.google.com/macros/s/AKfycby1eA87lxwHA_IZrZtma5CxpW1gDU8VCsVRJH7i2o25aFFhowCg6S_OEsljFm9q2Eht/exec";
     if (webAppUrl) {
         try {
             const response = await fetch(webAppUrl, {
