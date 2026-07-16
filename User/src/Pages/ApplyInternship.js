@@ -37,30 +37,31 @@ const postToGoogleForm = async (applicationData) => {
   }
 
   const fieldMapping = {
-    how_heard_about_us: "entry.1753999706",
-    full_name: "entry.474493951",
-    phone_number: "entry.1422801395",
-    apply_confirmation: "entry.1548730422",
-    linkedin_profile: "entry.1922910232",
-    country_state_city: "entry.99296184",
-    program_type: "entry.2024330731",
-    major_specialization: "entry.1249420656",
-    university: "entry.1166903644",
-    graduation_year: "entry.43991991",
-    cv_url: "entry.1659602453",
-    top_priority_role: "entry.695102901",
-    role_rating: "entry.1802508767",
-    skills_description: "entry.1408066486",
-    availability: "entry.2068642244",
-    days_timings: "entry.1874869137",
-    native_state: "entry.2136115182",
-    is_student_status: "entry.459653991",
-    highest_stipend: "entry.197147332",
-    experience_months: "entry.2145989347",
-    portfolio_url: "entry.1322497166",
-    available_to_join: "entry.1278536855",
-    duration_stay: "entry.104853252",
-    remarks: "entry.2009630798",
+    how_heard_about_us: process.env.REACT_APP_GOOGLE_FORM_FIELD_HOW_HEARD || "entry.1753999706",
+    full_name: process.env.REACT_APP_GOOGLE_FORM_FIELD_FULL_NAME || "entry.474493951",
+    email: process.env.REACT_APP_GOOGLE_FORM_FIELD_EMAIL || "",
+    phone_number: process.env.REACT_APP_GOOGLE_FORM_FIELD_PHONE || "entry.1422801395",
+    apply_confirmation: process.env.REACT_APP_GOOGLE_FORM_FIELD_APPLY_CONFIRM || "entry.1548730422",
+    linkedin_profile: process.env.REACT_APP_GOOGLE_FORM_FIELD_LINKEDIN || "entry.1922910232",
+    country_state_city: process.env.REACT_APP_GOOGLE_FORM_FIELD_LOCATION || "entry.99296184",
+    program_type: process.env.REACT_APP_GOOGLE_FORM_FIELD_PROGRAM_TYPE || "entry.2024330731",
+    major_specialization: process.env.REACT_APP_GOOGLE_FORM_FIELD_MAJOR || "entry.1249420656",
+    university: process.env.REACT_APP_GOOGLE_FORM_FIELD_UNIVERSITY || "entry.1166903644",
+    graduation_year: process.env.REACT_APP_GOOGLE_FORM_FIELD_GRAD_YEAR || "entry.43991991",
+    cv_url: process.env.REACT_APP_GOOGLE_FORM_FIELD_CV || "entry.1659602453",
+    top_priority_role: process.env.REACT_APP_GOOGLE_FORM_FIELD_ROLE || "entry.695102901",
+    role_rating: process.env.REACT_APP_GOOGLE_FORM_FIELD_ROLE_RATING || "entry.1802508767",
+    skills_description: process.env.REACT_APP_GOOGLE_FORM_FIELD_SKILLS || "entry.1408066486",
+    availability: process.env.REACT_APP_GOOGLE_FORM_FIELD_AVAILABILITY || "entry.2068642244",
+    days_timings: process.env.REACT_APP_GOOGLE_FORM_FIELD_DAYS_TIMINGS || "entry.1874869137",
+    native_state: process.env.REACT_APP_GOOGLE_FORM_FIELD_NATIVE_STATE || "entry.2136115182",
+    is_student_status: process.env.REACT_APP_GOOGLE_FORM_FIELD_STUDENT_STATUS || "entry.459653991",
+    highest_stipend: process.env.REACT_APP_GOOGLE_FORM_FIELD_STIPEND || "entry.197147332",
+    experience_months: process.env.REACT_APP_GOOGLE_FORM_FIELD_EXPERIENCE || "entry.2145989347",
+    portfolio_url: process.env.REACT_APP_GOOGLE_FORM_FIELD_PORTFOLIO || "entry.1322497166",
+    available_to_join: process.env.REACT_APP_GOOGLE_FORM_FIELD_JOIN_DATE || "entry.1278536855",
+    duration_stay: process.env.REACT_APP_GOOGLE_FORM_FIELD_DURATION || "entry.104853252",
+    remarks: process.env.REACT_APP_GOOGLE_FORM_FIELD_REMARKS || "entry.2009630798",
   };
 
   const formData = new URLSearchParams();
@@ -68,7 +69,7 @@ const postToGoogleForm = async (applicationData) => {
   // Standard email collection parameter
   formData.append("emailAddress", String(applicationData.email || ""));
   for (const [key, entryId] of Object.entries(fieldMapping)) {
-    if (applicationData[key] !== undefined && applicationData[key] !== null) {
+    if (entryId && applicationData[key] !== undefined && applicationData[key] !== null) {
       formData.append(entryId, String(applicationData[key]));
     }
   }
