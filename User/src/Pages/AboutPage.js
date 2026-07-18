@@ -35,7 +35,9 @@ export default function AboutPage() {
     }
   };
 
-  useEffect(() => window.scrollTo(0, 0), []);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
   useEffect(() => {
     let mounted = true;
 
@@ -138,6 +140,7 @@ export default function AboutPage() {
           ? valuesRes
           : defaultValues;
 
+
       // Ensure at least 4 items (pad with defaults if needed)
       if (finalValues.length < 4) {
         finalValues = [...finalValues, ...defaultValues].slice(0, 4);
@@ -220,52 +223,6 @@ export default function AboutPage() {
       mounted = false;
     };
   }, []);
-
-  // Small helper components
-  const Reveal = ({ children, className = "" }) => {
-    const ref = React.useRef(null);
-    const [visible, setVisible] = useState(false);
-
-    useEffect(() => {
-      const ob = new IntersectionObserver(
-        ([entry]) => {
-          if (entry.isIntersecting) {
-            setVisible(true);
-            ob.disconnect();
-          }
-        },
-        { threshold: 0.15 }
-      );
-      if (ref.current) ob.observe(ref.current);
-      return () => ob.disconnect();
-    }, []);
-
-    return (
-      <div
-        ref={ref}
-        className={`${className} transition-all duration-700 ease-out ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
-          }`}
-      >
-        {children}
-      </div>
-    );
-  };
-
-  const SectionTitle = ({ title, children, subtitle }) => {
-    const heading = title ?? children;
-    return (
-      <div className="text-center mb-12">
-        <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
-          {heading}
-        </h2>
-        {subtitle && (
-          <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            {subtitle}
-          </p>
-        )}
-      </div>
-    );
-  };
 
   const bgImages = [process.env.PUBLIC_URL + "/mentors.jpg", process.env.PUBLIC_URL + "/ai.jpg", process.env.PUBLIC_URL + "/planning.jpg"];
 
@@ -497,3 +454,49 @@ export default function AboutPage() {
     </div>
   );
 }
+
+// Helper components moved outside to avoid unneeded unmount/mount cycles
+const Reveal = ({ children, className = "" }) => {
+  const ref = React.useRef(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const ob = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          ob.disconnect();
+        }
+      },
+      { threshold: 0.15 }
+    );
+    if (ref.current) ob.observe(ref.current);
+    return () => ob.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={`${className} transition-all duration-700 ease-out ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+        }`}
+    >
+      {children}
+    </div>
+  );
+};
+
+const SectionTitle = ({ title, children, subtitle }) => {
+  const heading = title ?? children;
+  return (
+    <div className="text-center mb-12">
+      <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        {heading}
+      </h2>
+      {subtitle && (
+        <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
+          {subtitle}
+        </p>
+      )}
+    </div>
+  );
+};

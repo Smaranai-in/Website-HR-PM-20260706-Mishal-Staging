@@ -62,7 +62,9 @@ const ResearchSupport = () => {
 
 
 
-  useEffect(() => window.scrollTo(0, 0), []);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   const uploadDocumentUsingID = async () => {
     if (!form.document) return null;

@@ -163,7 +163,9 @@ export default function ApplyInternship() {
     if (!loadingUser && !user) navigate("/");
   }, [user, loadingUser]);
 
-  useEffect(() => window.scrollTo(0, 0), []);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   useEffect(() => {
     const checkExistingApplication = async () => {

@@ -30,7 +30,9 @@ const AcademicProjects = () => {
 const { user, loadingUser } = useAuthModal();
   const navigate = useNavigate();
 
-  useEffect(() => window.scrollTo(0, 0), []);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   useEffect(() => {
     if (!loadingUser && !user) navigate("/");
