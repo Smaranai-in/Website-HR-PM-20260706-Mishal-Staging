@@ -1709,61 +1709,112 @@ SmaranAI Admin Team`);
                 />
               </div>
 
-              {/* 4. Professional Status & Availability (New Section) */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700/50">
-                <h3 className="font-bold text-slate-800 dark:text-slate-300 mb-3 flex items-center gap-2">
-                  <User size={18} /> Professional Status
+              {/* 4. Professional Status & Availability */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700/50 space-y-4">
+                <h3 className="font-bold text-slate-800 dark:text-slate-300 flex items-center gap-2">
+                  <User size={18} /> Professional Status & Availability
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <Field
-                    label="Current Status"
+                    label="Are you a Student?"
                     value={
-                      selected.is_student
-                        ? "Student"
+                      selected.is_student_status ||
+                      (selected.is_student
+                        ? "Yes, Student"
                         : selected.is_working_professional
-                          ? "Working Professional"
-                          : "Not Specified"
+                          ? "No, Working Professional"
+                          : "No, Fresher / Graduated")
                     }
                   />
                   <Field
-                    label="Availability"
-                    icon={<Clock size={14} />}
-                    value={selected.available_to_join || "—"}
+                    label="Native State"
+                    value={selected.native_state || "—"}
                   />
+                  <Field
+                    label="Availability (Hours)"
+                    value={selected.availability || "—"}
+                  />
+                  <Field
+                    label="Duration of Stay"
+                    value={selected.duration_stay || "—"}
+                  />
+                  <Field
+                    label="Join Date Preference"
+                    value={selected.available_to_join || "—"}
+                    isFull
+                  />
+                  {selected.how_heard_about_us && (
+                    <Field
+                      label="Discovery (Hear About Us)"
+                      value={selected.how_heard_about_us}
+                      isFull
+                    />
+                  )}
+                  {selected.apply_confirmation && (
+                    <Field
+                      label="Application Confirmation"
+                      value={selected.apply_confirmation}
+                      isFull
+                    />
+                  )}
+                  {selected.gsheet_id && (
+                    <Field
+                      label="Google Sheet ID / Row ID"
+                      value={selected.gsheet_id}
+                      isFull
+                    />
+                  )}
                 </div>
               </div>
 
-              {/* 5. Experience Descriptions (New Section) */}
-              {(selected.has_internship_exp ||
-                selected.is_working_professional) && (
-                  <div className="p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-xl border border-indigo-100 dark:border-indigo-900/30 space-y-4">
-                    <h3 className="font-bold text-indigo-800 dark:text-indigo-300 flex items-center gap-2">
-                      <Briefcase size={18} /> Experience Details
-                    </h3>
+              {/* 5. Experience & Skills */}
+              <div className="p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-xl border border-indigo-100 dark:border-indigo-900/30 space-y-4">
+                <h3 className="font-bold text-indigo-800 dark:text-indigo-300 flex items-center gap-2">
+                  <Briefcase size={18} /> Experience & Skills
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field
+                    label="Experience (Months)"
+                    value={selected.experience_months || (selected.has_internship_exp ? "Yes (details below)" : "None")}
+                  />
+                  <Field
+                    label="Highest Stipend"
+                    value={selected.highest_stipend || "None"}
+                  />
+                </div>
 
-                    {selected.has_internship_exp && (
-                      <div className="bg-white dark:bg-indigo-950/30 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900/20">
-                        <Field
-                          label="Internship Experience"
-                          value={selected.internship_exp_desc}
-                          isFull
-                        />
-                      </div>
-                    )}
-
-                    {selected.is_working_professional && (
-                      <div className="bg-white dark:bg-indigo-950/30 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900/20">
-                        <Field
-                          label="Work Experience"
-                          value={selected.work_experience_desc}
-                          isFull
-                        />
-                      </div>
-                    )}
+                {selected.skills_description && (
+                  <div className="bg-white dark:bg-indigo-950/30 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900/20">
+                    <Field
+                      label="Skills Summary"
+                      value={selected.skills_description}
+                      isFull
+                    />
                   </div>
                 )}
 
-              {/* 6. Interview Date (New Section) */}
+                {selected.has_internship_exp && selected.internship_exp_desc && (
+                  <div className="bg-white dark:bg-indigo-950/30 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900/20">
+                    <Field
+                      label="Legacy Internship Experience"
+                      value={selected.internship_exp_desc}
+                      isFull
+                    />
+                  </div>
+                )}
+
+                {selected.is_working_professional && selected.work_experience_desc && (
+                  <div className="bg-white dark:bg-indigo-950/30 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900/20">
+                    <Field
+                      label="Legacy Work Experience"
+                      value={selected.work_experience_desc}
+                      isFull
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* 6. Interview Date */}
               {selected.interview_date && (
                 <div className="p-4 bg-orange-50 dark:bg-orange-900/10 rounded-xl border border-orange-100 dark:border-orange-900/30 flex items-center gap-4">
                   <div className="bg-orange-100 dark:bg-orange-900/40 p-3 rounded-full text-orange-600 dark:text-orange-400">
@@ -1780,28 +1831,32 @@ SmaranAI Admin Team`);
                 </div>
               )}
 
-              {/* 7. Work Schedule (Existing) */}
-              {true && (
+              {/* 7. Work Schedule */}
+              {(selected.days_timings || selected.start_week) && (
                 <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded-xl border border-purple-100 dark:border-purple-900/30">
                   <h3 className="font-bold text-purple-800 dark:text-purple-300 mb-3 flex items-center gap-2">
                     <CalendarDays size={18} /> Preferred Schedule
                   </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="Start Week" value={selected.start_week} />
-                    <Field label="End Week" value={selected.end_week} />
-                    <Field
-                      label="Start Time"
-                      value={formatTime(selected.start_time)}
-                    />
-                    <Field
-                      label="End Time"
-                      value={formatTime(selected.end_time)}
-                    />
-                  </div>
+                  {selected.days_timings ? (
+                    <Field label="Available Days & Timings" value={selected.days_timings} isFull />
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label="Start Week" value={selected.start_week} />
+                      <Field label="End Week" value={selected.end_week} />
+                      <Field
+                        label="Start Time"
+                        value={formatTime(selected.start_time)}
+                      />
+                      <Field
+                        label="End Time"
+                        value={formatTime(selected.end_time)}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* 8. Education Details (Existing) */}
+              {/* 8. Education Details */}
               <div className="p-4 bg-teal-50 dark:bg-teal-900/20 rounded-xl border border-teal-100 dark:border-teal-900/30">
                 <h3 className="font-bold text-teal-800 dark:text-teal-300 mb-3 flex items-center gap-2">
                   <School size={18} /> Education
@@ -1814,10 +1869,22 @@ SmaranAI Admin Team`);
                   />
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Program" value={selected.program_type} />
-                    <Field label="Branch" value={selected.branch} />
+                    <Field label="Major / Specialization" value={selected.major_specialization || selected.branch || "—"} />
                   </div>
                 </div>
               </div>
+
+              {/* 8.5. Remarks & Comments */}
+              {selected.remarks && (
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700/50">
+                  <h3 className="font-bold text-slate-800 dark:text-slate-300 mb-3 flex items-center gap-2">
+                    <Quote size={18} /> Remarks / Suggestions
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 italic bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
+                    "{selected.remarks}"
+                  </p>
+                </div>
+              )}
 
               {/* 9. Resume Link (Existing) */}
               {selected.cv_url ? (

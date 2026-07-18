@@ -1051,61 +1051,121 @@ case "create_internship_application": {
     delete applicationData.action;
     delete applicationData.user_id;
 
+    const appUuid = crypto.randomUUID();
     const { error } = await admin
         .from("w_internship_applications")
         .insert([{
-            id: crypto.randomUUID(),
+            id: appUuid,
             user_id: data.user.id,
             ...applicationData
         }]);
 
     if (error) throw error;
 
-    // Automatically submit to Google Form (Backend trigger)
-    const googleFormUrl = Deno.env.get("GOOGLE_FORM_RESPONSE_URL");
-    if (googleFormUrl) {
+    // Try secure backend-to-backend sync via Google Apps Script Web App first
+    const webAppUrl = Deno.env.get("GOOGLE_GSHEET_WEBAPP_URL") || "https://script.google.com/macros/s/AKfycbxJAL_Xw0KnMFJ4pY2foYnyEpQ2jLuK1O4CW5Pg2Nj59qQ710XkDe34wn638AQr1GZr/exec";
+    if (webAppUrl) {
         try {
-            const fieldMap: Record<string, string> = {
-                full_name: Deno.env.get("GOOGLE_FORM_FIELD_FULL_NAME") || "entry.1000001",
-                email: Deno.env.get("GOOGLE_FORM_FIELD_EMAIL") || "entry.1000002",
-                phone_number: Deno.env.get("GOOGLE_FORM_FIELD_PHONE") || "entry.1000003",
-                linkedin_profile: Deno.env.get("GOOGLE_FORM_FIELD_LINKEDIN") || "entry.1000004",
-                portfolio_url: Deno.env.get("GOOGLE_FORM_FIELD_PORTFOLIO") || "entry.1000005",
-                github_url: Deno.env.get("GOOGLE_FORM_FIELD_GITHUB") || "entry.1000006",
-                university: Deno.env.get("GOOGLE_FORM_FIELD_UNIVERSITY") || "entry.1000007",
-                country: Deno.env.get("GOOGLE_FORM_FIELD_COUNTRY") || "entry.1000008",
-                state: Deno.env.get("GOOGLE_FORM_FIELD_STATE") || "entry.1000009",
-                city: Deno.env.get("GOOGLE_FORM_FIELD_CITY") || "entry.1000010",
-                program_type: Deno.env.get("GOOGLE_FORM_FIELD_PROGRAM_TYPE") || "entry.1000011",
-                branch: Deno.env.get("GOOGLE_FORM_FIELD_BRANCH") || "entry.1000012",
-                graduation_year: Deno.env.get("GOOGLE_FORM_FIELD_GRAD_YEAR") || "entry.1000013",
-                top_priority_role: Deno.env.get("GOOGLE_FORM_FIELD_ROLE") || "entry.1000014",
-                availability: Deno.env.get("GOOGLE_FORM_FIELD_AVAILABILITY") || "entry.1000015",
-                available_to_join: Deno.env.get("GOOGLE_FORM_FIELD_JOIN_DATE") || "entry.1000016",
-                cv_url: Deno.env.get("GOOGLE_FORM_FIELD_CV") || "entry.1000017",
-            };
-
-            const formData = new URLSearchParams();
-            for (const [key, entryId] of Object.entries(fieldMap)) {
-                if (applicationData[key] !== undefined && applicationData[key] !== null) {
-                    formData.append(entryId, String(applicationData[key]));
-                }
-            }
-
-            // Fire request to Google Form Response URL asynchronously (non-blocking)
-            fetch(googleFormUrl, {
+            const response = await fetch(webAppUrl, {
                 method: "POST",
                 headers: {
-                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Content-Type": "application/json",
                 },
-                body: formData.toString(),
-            }).then((res) => {
-                console.log(`[Google Form] Submission status: ${res.status}`);
-            }).catch((err) => {
-                console.error("[Google Form] Submission error:", err);
+                body: JSON.stringify({
+                    action: "add_application",
+                    secret: Deno.env.get("GSHEET_WEBHOOK_SECRET") || "smaranai-gsheet-webhook-secret-2026",
+                    application: {
+                        ...applicationData,
+                        created_at: new Date().toISOString()
+                    }
+                }),
             });
-        } catch (gErr) {
-            console.error("[Google Form] Setup error:", gErr);
+            const result = await response.json();
+            if (response.ok && result.gsheet_id) {
+                // Update the newly inserted record with the generated ApplicationID from the sheet!
+                await admin
+                    .from("w_internship_applications")
+                    .update({ gsheet_id: result.gsheet_id })
+                    .eq("id", appUuid);
+                console.log(`[Backend Sync] Sync succeeded, updated gsheet_id: ${result.gsheet_id}`);
+            } else {
+                console.error("[Backend Sync] Web App returned error:", result.error || "Unknown error");
+            }
+        } catch (err) {
+            console.error("[Backend Sync] Failed to connect to Web App:", err);
+        }
+    } else {
+        // Fallback to old Google Form submission (Backend trigger)
+        const googleFormUrl = Deno.env.get("GOOGLE_FORM_RESPONSE_URL");
+        if (googleFormUrl) {
+            try {
+                const combinedLocation = applicationData.country_state_city || 
+                    [applicationData.city, applicationData.state, applicationData.country].filter(Boolean).join(", ");
+                const combinedExperience = applicationData.experience_months || 
+                    (applicationData.has_internship_exp ? "Yes" : "No");
+
+                const fieldMap: Record<string, string> = {
+                    how_heard_about_us: Deno.env.get("GOOGLE_FORM_FIELD_HOW_HEARD") || "entry.1753999706",
+                    full_name: Deno.env.get("GOOGLE_FORM_FIELD_FULL_NAME") || "entry.474493951",
+                    phone_number: Deno.env.get("GOOGLE_FORM_FIELD_PHONE") || "entry.1422801395",
+                    apply_confirmation: Deno.env.get("GOOGLE_FORM_FIELD_APPLY_CONFIRM") || "entry.1548730422",
+                    linkedin_profile: Deno.env.get("GOOGLE_FORM_FIELD_LINKEDIN") || "entry.1922910232",
+                    program_type: Deno.env.get("GOOGLE_FORM_FIELD_PROGRAM_TYPE") || "entry.2024330731",
+                    major_specialization: Deno.env.get("GOOGLE_FORM_FIELD_MAJOR") || "entry.1249420656",
+                    university: Deno.env.get("GOOGLE_FORM_FIELD_UNIVERSITY") || "entry.1166903644",
+                    graduation_year: Deno.env.get("GOOGLE_FORM_FIELD_GRAD_YEAR") || "entry.43991991",
+                    cv_url: Deno.env.get("GOOGLE_FORM_FIELD_CV") || "entry.1659602453",
+                    top_priority_role: Deno.env.get("GOOGLE_FORM_FIELD_ROLE") || "entry.695102901",
+                    role_rating: Deno.env.get("GOOGLE_FORM_FIELD_ROLE_RATING") || "entry.1802508767",
+                    skills_description: Deno.env.get("GOOGLE_FORM_FIELD_SKILLS") || "entry.1408066486",
+                    availability: Deno.env.get("GOOGLE_FORM_FIELD_AVAILABILITY") || "entry.2068642244",
+                    days_timings: Deno.env.get("GOOGLE_FORM_FIELD_DAYS_TIMINGS") || "entry.1874869137",
+                    native_state: Deno.env.get("GOOGLE_FORM_FIELD_NATIVE_STATE") || "entry.2136115182",
+                    is_student_status: Deno.env.get("GOOGLE_FORM_FIELD_STUDENT_STATUS") || "entry.459653991",
+                    highest_stipend: Deno.env.get("GOOGLE_FORM_FIELD_STIPEND") || "entry.197147332",
+                    portfolio_url: Deno.env.get("GOOGLE_FORM_FIELD_PORTFOLIO") || "entry.1322497166",
+                    available_to_join: Deno.env.get("GOOGLE_FORM_FIELD_JOIN_DATE") || "entry.1278536855",
+                    duration_stay: Deno.env.get("GOOGLE_FORM_FIELD_DURATION") || "entry.104853252",
+                    remarks: Deno.env.get("GOOGLE_FORM_FIELD_REMARKS") || "entry.2009630798",
+                };
+
+                const formData = new URLSearchParams();
+                
+                const emailField = Deno.env.get("GOOGLE_FORM_FIELD_EMAIL") || "emailAddress";
+                if (applicationData.email) {
+                    formData.append(emailField, String(applicationData.email));
+                }
+                
+                if (combinedLocation) {
+                    const locationField = Deno.env.get("GOOGLE_FORM_FIELD_LOCATION") || "entry.99296184";
+                    formData.append(locationField, combinedLocation);
+                }
+
+                if (combinedExperience) {
+                    const experienceField = Deno.env.get("GOOGLE_FORM_FIELD_EXPERIENCE") || "entry.2145989347";
+                    formData.append(experienceField, combinedExperience);
+                }
+                for (const [key, entryId] of Object.entries(fieldMap)) {
+                    if (entryId && applicationData[key] !== undefined && applicationData[key] !== null) {
+                        formData.append(entryId, String(applicationData[key]));
+                    }
+                }
+
+                // Fire request to Google Form Response URL asynchronously (non-blocking)
+                fetch(googleFormUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    body: formData.toString(),
+                }).then((res) => {
+                    console.log(`[Google Form] Submission status: ${res.status}`);
+                }).catch((err) => {
+                    console.error("[Google Form] Submission error:", err);
+                });
+            } catch (gErr) {
+                console.error("[Google Form] Setup error:", gErr);
+            }
         }
     }
 
@@ -1142,6 +1202,27 @@ case "update_internship_application": {
     if (error) throw error;
 
     return respond({ success: true });
+}
+case "sync_gsheet_id": {
+    const { email, gsheet_id, secret } = body;
+    const expectedSecret = Deno.env.get("GSHEET_WEBHOOK_SECRET") || "smaranai-gsheet-webhook-secret-2026";
+    
+    if (secret !== expectedSecret) {
+        return respond({ error: "Unauthorized webhook key" }, 401);
+    }
+    if (!email || !gsheet_id) {
+        return respond({ error: "email and gsheet_id are required" }, 400);
+    }
+    
+    const { data, error } = await admin
+        .from("w_internship_applications")
+        .update({ gsheet_id })
+        .eq("email", email.trim())
+        .select();
+
+    if (error) throw error;
+    
+    return respond({ success: true, updated: data });
 }
 case "create_research_enrollment": {
     if (!authHeader) {
